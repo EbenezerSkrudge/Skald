@@ -1,4 +1,4 @@
-from pony.orm import Database, Required, Optional
+from pony.orm import Database, Required, Optional, composite_index
 
 # Single shared Database instance
 db = Database()
@@ -16,12 +16,11 @@ class Script(db.Entity):
         and ordering by priority (ascending).
     """
 
-    _table_   = "script"
-    _indexes_ = [("category", "priority")]
-
     name     = Required(str, unique=True)
-    category = Required(str)    # Script type: "trigger", "timer", "alias", "event", etc.
-    pattern  = Optional(str)    # Matching criterion (string, regex, time interval, event etc.)
-    code     = Required(str)    # Raw Python source code that will be exec()’d when the script fires
+    category = Required(str)
+    pattern  = Optional(str)
+    code     = Required(str)
     enabled  = Required(bool, default=True)
-    priority = Required(int, default=0)     # Execution ordering within the same category
+    priority = Required(int, default=0)
+
+    composite_index(category, priority)
