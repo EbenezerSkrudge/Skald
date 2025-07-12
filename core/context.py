@@ -1,11 +1,11 @@
-# core/script_context.py
+# core/context.py
 
 from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from core.app import App
 
-class ScriptContext:
+class Context:
     def __init__(self, app: "App"):
         self._app = app
 
