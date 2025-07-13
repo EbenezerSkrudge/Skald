@@ -5,8 +5,10 @@ from PySide6.QtWidgets import (
     QHBoxLayout, QStatusBar
 )
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QAction
+
 from ui.widgets.console.console import Console
+from ui.windows.script_window  import ScriptingWindow
 
 class MainWindow(QMainWindow):
     def __init__(self, app):
@@ -71,9 +73,19 @@ class MainWindow(QMainWindow):
 
     def _create_menu(self):
         menu = self.menuBar()
+
+        # File menu
         file_menu = menu.addMenu("&File")
         exit_action = file_menu.addAction("E&xit")
         exit_action.triggered.connect(self.close)
+
+        # Tools menu
+        tools_menu = menu.addMenu("&Tools")
+
+        # Scripts Editor action
+        scripts_action = QAction("Scripts Editor", self)
+        scripts_action.triggered.connect(self._open_scripting_window)
+        tools_menu.addAction(scripts_action)
 
     def _create_status_bar(self):
         status = QStatusBar()
@@ -82,3 +94,14 @@ class MainWindow(QMainWindow):
 
     def _handle_command(self, text: str):
         self.app.send_to_mud(text)
+
+    def _open_scripting_window(self):
+        """
+        Show the Scripts Editor, creating it if needed.
+        """
+        if getattr(self, "scripting_window", None) is None:
+            # app.script_manager is passed in when MainWindow is constructed
+            self.scripting_window = ScriptingWindow(self.app, self.app.script_manager)
+        self.scripting_window.show()
+        self.scripting_window.raise_()
+        self.scripting_window.activateWindow()

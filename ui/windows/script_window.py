@@ -13,9 +13,11 @@ from PySide6.QtGui    import QStandardItemModel, QStandardItem
 from PySide6.QtCore   import Qt, QModelIndex
 
 from ui.widgets.code_editor    import CodeEditor
-from core.context       import Context
+from core.context              import Context
 from core.script_manager       import ScriptManager
 from data.models               import Script
+
+from pony.orm import db_session
 
 
 class ScriptingWindow(QMainWindow):
@@ -71,6 +73,7 @@ class ScriptingWindow(QMainWindow):
         self.save_btn.setEnabled(False)
         self.delete_btn.setEnabled(False)
 
+    @db_session
     def _populate_tree(self):
         """
         Load all Script rows from the database, grouped by category,
@@ -121,6 +124,7 @@ class ScriptingWindow(QMainWindow):
             self.save_btn.setEnabled(False)
             self.delete_btn.setEnabled(False)
 
+    @db_session
     def _on_save(self):
         """
         Save the edited code back to the database,
@@ -137,6 +141,7 @@ class ScriptingWindow(QMainWindow):
         self.sm._load_all_scripts()
         self._populate_tree()
 
+    @db_session
     def _on_delete(self):
         """
         Delete the selected script from the database,
