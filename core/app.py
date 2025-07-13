@@ -54,7 +54,7 @@ class App:
         self.trigger_manager = TriggerManager(self.send_to_mud)
         self.script_manager = ScriptManager(self, self.trigger_manager)
 
-        register_system_triggers(self.trigger_manager, app=self.send_to_mud)
+        register_system_triggers(self.trigger_manager, self.send_to_mud)
 
     def start(self):
         pm = ProfileManager(self)
