@@ -1,26 +1,22 @@
-# core/db.py
-
 from pathlib import Path
-from data.models import db
+from pony.orm import Database
 
-def init_db(profile_path: Path):
+db = Database()
+
+def init_db(db_file: Path) -> None:
     """
-    Bind the shared `db` to the profile’s SQLite file
-    and generate tables if they don’t exist.
-
-    Safe to call multiple times; only binds once.
+    Bind Pony to a sqlite file and create all tables.
     """
-    if profile_path is None:
-        raise ValueError("init_db() requires a non-None profile_path")
+    # make sure parent folder exists
+    db_file.parent.mkdir(parents=True, exist_ok=True)
 
-    # Only bind once
-    if db.provider is None:
-        db_path = profile_path / "data.sqlite"
-        db.bind(
-            provider   = 'sqlite',
-            filename   = str(db_path),
-            create_db  = True
-        )
-        db.generate_mapping(create_tables=True)
+    # bind & auto‐create the file if needed
+    db.bind(
+        provider   = 'sqlite',
+        filename   = str(db_file),
+        create_db  = True
+    )
 
-    return db
+    # actually create tables
+    db.generate_mapping(create_tables=True)
+

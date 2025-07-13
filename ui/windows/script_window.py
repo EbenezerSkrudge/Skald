@@ -1,13 +1,13 @@
 # ui/windows/scripting_window.py
 
 from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QPushButton,
     QMainWindow,
-    QWidget,
     QSplitter,
     QTreeView,
     QVBoxLayout,
-    QHBoxLayout,
-    QPushButton
+    QWidget,
 )
 from PySide6.QtGui    import QStandardItemModel, QStandardItem
 from PySide6.QtCore   import Qt, QModelIndex
@@ -138,7 +138,7 @@ class ScriptingWindow(QMainWindow):
         self.current.flush()
 
         # Reload engine with updated scripts
-        self.sm._load_all_scripts()
+        self.sm.load_all_scripts()
         self._populate_tree()
 
     @db_session
@@ -153,7 +153,7 @@ class ScriptingWindow(QMainWindow):
         self.current.delete()
         self.current = None
 
-        self.sm._load_all_scripts()
+        self.sm.load_all_scripts()
         self._populate_tree()
         self.editor.setText("")
         self.save_btn.setEnabled(False)

@@ -8,16 +8,16 @@ from PySide6.QtWidgets import QApplication
 from ui.windows.profile_manager import ProfileManager
 from ui.windows.main_window     import MainWindow
 
-from core.connection import MudConnection
-from core.settings   import load_settings
-from core.db         import init_db
 from core.config     import HOST, PORT
+from core.settings   import load_settings
 from core.telnet     import TelnetCmd
+from core.connection import MudConnection
+from core.db         import init_db
 
 from core.script_manager  import ScriptManager
 from core.trigger_manager import TriggerManager
+from core.system_triggers import register_system_triggers
 
-from core.system_triggers    import register_system_triggers
 
 
 class App:
@@ -40,6 +40,9 @@ class App:
         self.profile_path = Path()
         self.settings     = {}
 
+        self.script_manager = None
+        self.trigger_manager = None
+
         # Telnet hooks
         self.connection.dataReceived.connect(self._on_data)
         self.connection.errorOccurred.connect(self._on_error)
@@ -47,14 +50,8 @@ class App:
         self.connection.gmcpReceived.connect(self._on_gmcp)
         self.connection.negotiation.connect(self._on_negotiation)
 
-        # Initialize DB & load triggers
-        init_db(self.profile_path)
-
-        # Managers
-        self.trigger_manager = TriggerManager(self.send_to_mud)
-        self.script_manager = ScriptManager(self, self.trigger_manager)
-
-        register_system_triggers(self.trigger_manager, self.send_to_mud)
+        # # Initialize DB & load triggers
+        # init_db(self.profile_path / "data.sqlite")
 
     def start(self):
         pm = ProfileManager(self)
@@ -65,8 +62,16 @@ class App:
     def on_profile_selected(self, profile_path: Path):
         self.profile_path = profile_path
         self.settings     = load_settings(profile_path)
-        init_db(profile_path)
 
+        # Initialise database
+        init_db(profile_path / "data.sqlite")
+
+        # Create script managers
+        self.trigger_manager = TriggerManager(self)
+        self.script_manager = ScriptManager(self, self.trigger_manager)
+        register_system_triggers(self.trigger_manager, self.send_to_mud)
+
+        # Create and/or open main window
         if self.main_window is None:
             self.main_window = MainWindow(self)
         self.main_window.showMaximized()
@@ -121,11 +126,9 @@ class App:
         self.trigger_manager.add_trigger(
             name             = name,
             regex            = regex,
-            action_template  = action_template,
             action           = action_fn,
             enabled          = enabled,
             priority         = priority,
-            persist          = True
         )
 
     def remove_trigger(self, name: str):

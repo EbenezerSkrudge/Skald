@@ -1,14 +1,16 @@
 # core/script_manager.py
 
 import re
-from typing       import Dict, TYPE_CHECKING
-from pony.orm     import db_session
-from data.models  import Script
-from core.context import Context
+from typing        import Dict, TYPE_CHECKING
+from pony.orm      import db_session
+from PySide6.QtCore import QTimer
+from data.models   import Script
+from core.context  import Context
 
 if TYPE_CHECKING:
-    # Only for type hints; not used at runtime
-    from core.app import App
+    from core.app             import App
+    from core.trigger_manager import TriggerManager
+
 
 class ScriptManager:
     """
@@ -16,33 +18,34 @@ class ScriptManager:
     triggers, timers, aliases, and event handlers.
     """
 
-    def __init__(self, app: "App", trigger_manager):
-        # store the App *instance* and managers
-        self.app     = app
-        self.tm      = trigger_manager
-        self.ctx     = Context(app)
-        self.timers: Dict[str, any] = {}
-        # load all scripts on startup
-        self._load_all_scripts()
+    def __init__(self, app: "App", trigger_manager: "TriggerManager"):
+        self.app  = app
+        self.tm   = trigger_manager
+        self.ctx  = Context(app)
+        self.timers: Dict[str, QTimer] = {}
+        self.load_all_scripts()
 
     @db_session
-    def _load_all_scripts(self):
+    def load_all_scripts(self):
         """
         Read every Script row, compile its code, and register it
         in the right place (trigger_manager, timers, aliases, events).
         """
-        for rec in Script.select():
+        # clear old in‐memory triggers
+        self.tm.clear_all()
+
+        for rec in Script.select().order_by(Script.category, Script.priority):
             if not rec.enabled:
                 continue
 
-            # compile the user‐provided Python snippet
             code_obj = compile(rec.code, f"<script:{rec.name}>", "exec")
 
             if rec.category == "trigger":
+                action_fn = self._make_trigger_fn(code_obj)
                 self.tm.add_trigger(
                     name     = rec.name,
-                    regex    = rec.pattern,
-                    action   = self._make_trigger_fn(code_obj),
+                    regex    = rec.pattern or "",
+                    action   = action_fn,
                     enabled  = True,
                     priority = rec.priority
                 )
@@ -52,46 +55,86 @@ class ScriptManager:
                 self._start_timer(rec.name, code_obj, interval)
 
             elif rec.category == "alias":
-                # assumes you have an alias_manager on app
-                self.app.alias_manager.register_alias(
-                    rec.pattern,
-                    self._make_alias_fn(code_obj)
-                )
+                alias_fn = self._make_alias_fn(code_obj)
+                self.app.alias_manager.register_alias(rec.pattern, alias_fn)
 
             elif rec.category.startswith("on_"):
-                # e.g. on_connect, on_disconnect
-                self.app.register_event_handler(
-                    rec.category,
-                    self._make_event_fn(code_obj)
-                )
+                event_fn = self._make_event_fn(code_obj)
+                self.app.register_event_handler(rec.category, event_fn)
 
     def _make_trigger_fn(self, code_obj):
-        def _fn(match):
-            exec(code_obj, {}, {"match": match, "ctx": self.ctx})
+        """
+        Return a function(match, ctx) that execs code_obj with:
+          - match
+          - ctx
+          - echo = ctx.echo
+          - send = ctx.send
+        """
+        def _fn(match, ctx):
+            exec(
+                code_obj,
+                {},
+                {
+                    "match": match,
+                    "ctx":   ctx,
+                    "echo":  ctx.echo,
+                    "send":  ctx.send           # <- use ctx.send, not send_to_mud
+                }
+            )
         return _fn
 
     def _make_alias_fn(self, code_obj):
-        def _fn(arg: str):
-            exec(code_obj, {}, {"arg": arg, "ctx": self.ctx})
+        """
+        Return a function(arg, ctx) for aliases.
+        """
+        def _fn(arg, ctx):
+            exec(
+                code_obj,
+                {},
+                {
+                    "arg":  arg,
+                    "ctx":  ctx,
+                    "send": ctx.send            # <- same here
+                }
+            )
         return _fn
 
     def _make_event_fn(self, code_obj):
-        def _fn(*args):
-            exec(code_obj, {}, {"args": args, "ctx": self.ctx})
+        """
+        Return a function(*args, ctx) for event handlers.
+        """
+        def _fn(*args, ctx):
+            exec(
+                code_obj,
+                {},
+                {
+                    "args": args,
+                    "ctx":  ctx
+                }
+            )
         return _fn
 
     def _start_timer(self, name: str, code_obj, interval: float):
-        from PySide6.QtCore import QTimer
+        """
+        Set up a QTimer that execs code_obj every `interval` seconds.
+        """
         timer = QTimer(self.app.qt_app)
         timer.setInterval(int(interval * 1000))
-        timer.timeout.connect(lambda: exec(code_obj, {}, {"ctx": self.ctx}))
+        # On timeout, run with ctx + send alias
+        timer.timeout.connect(lambda: exec(
+            code_obj,
+            {},
+            {
+                "ctx":  self.ctx,
+                "send": self.ctx.send       # <- and here
+            }
+        ))
         timer.start()
         self.timers[name] = timer
 
     def start_timer(self, name: str, interval: float):
         """
-        Public API for scripts to create new timers at runtime.
-        You can look up the Script row again and call _start_timer().
+        Public API: restart a named script‐timer at runtime.
         """
         with db_session:
             rec = Script.get(name=name)
@@ -101,7 +144,7 @@ class ScriptManager:
 
     def stop_timer(self, name: str):
         """
-        Public API to stop a running timer.
+        Public API: stop a running timer.
         """
         timer = self.timers.pop(name, None)
         if timer:

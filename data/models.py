@@ -1,21 +1,10 @@
-from pony.orm import Database, Required, Optional, composite_index
-
-# Single shared Database instance
-db = Database()
+from pony.orm         import Required, Optional, composite_index
+from core.db          import db
 
 class Script(db.Entity):
     """
-    Represents a user-defined script in the MUD client.
-
-    A Script can be a trigger, timer, alias, or event handler.
-    It holds the matching pattern (if applicable), the Python code to execute,
-    and metadata controlling whether and when it fires.
-
-    Class‐level Index:
-      • category + priority — speeds up queries filtering by category
-        and ordering by priority (ascending).
+    Represents user‐defined scripts.
     """
-
     name     = Required(str, unique=True)
     category = Required(str)
     pattern  = Optional(str)
@@ -23,4 +12,5 @@ class Script(db.Entity):
     enabled  = Required(bool, default=True)
     priority = Required(int, default=0)
 
+    # Pony will now register this index on the same `db`
     composite_index(category, priority)

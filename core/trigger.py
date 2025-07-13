@@ -4,25 +4,35 @@ import re
 from dataclasses import dataclass, field
 from typing import Pattern, Callable
 
-@dataclass(order=True)
+# core/trigger.py
+
+import re
+from typing        import Callable, Pattern
+from core.context  import Context
+
 class Trigger:
-    priority: int                                      # higher → run earlier
-    name: str = field(compare=False)
-    regex: str = field(compare=False)                  # raw regex string
-    pattern: Pattern = field(compare=False)            # compiled regex
-    action: Callable[[re.Match], None] = field(compare=False)
-    enabled: bool = field(default=True, compare=False)
+    """
+    In‐memory trigger descriptor.
+    action(match, ctx) is called when pattern.search(text) succeeds.
+    """
 
-    def __post_init__(self):
-        # Ensure our pattern matches the regex string, if someone only set regex:
-        if isinstance(self.regex, str) and not hasattr(self.pattern, 'pattern'):
-            self.pattern = re.compile(self.regex)
+    def __init__(
+        self,
+        priority:   int,
+        name:       str,
+        regex:      str,
+        pattern:    Pattern[str],
+        action:     Callable[[re.Match[str], Context], None],
+        enabled:    bool,
+    ):
+        self.priority = priority
+        self.name     = name
+        self.regex    = regex
+        self.pattern  = pattern
+        # Now properly typed to accept (match, ctx)
+        self.action: Callable[[re.Match[str], Context], None] = action
+        self.enabled  = enabled
 
-    def enable(self):
-        self.enabled = True
+    def __lt__(self, other: "Trigger") -> bool:
+        return self.priority < other.priority
 
-    def disable(self):
-        self.enabled = False
-
-    def toggle(self):
-        self.enabled = not self.enabled

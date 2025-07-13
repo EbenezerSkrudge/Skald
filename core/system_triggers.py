@@ -14,7 +14,7 @@ def register_system_triggers(
     manager.add_trigger(
         name="login_alert",
         regex=r"(?i).*\b(?:re)?login from\b.*",
-        action=lambda match, ctx: send_fn("Looks like we logged in"),
+        action=lambda match, ctx: ctx.echo("Looks like we logged in"),
         enabled=True,
         priority=0
     )

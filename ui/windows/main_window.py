@@ -8,7 +8,8 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIcon, QAction
 
 from ui.widgets.console.console import Console
-from ui.windows.script_window  import ScriptingWindow
+from ui.windows.trigger_editor import TriggerEditorWindow
+
 
 class MainWindow(QMainWindow):
     def __init__(self, app):
@@ -74,18 +75,17 @@ class MainWindow(QMainWindow):
     def _create_menu(self):
         menu = self.menuBar()
 
-        # File menu
-        file_menu = menu.addMenu("&File")
-        exit_action = file_menu.addAction("E&xit")
+        # Client menu
+        client_menu = menu.addMenu("&Client")
+        exit_action = client_menu.addAction("E&xit")
         exit_action.triggered.connect(self.close)
 
-        # Tools menu
-        tools_menu = menu.addMenu("&Tools")
+        # Scripts menu
+        scripts_menu = menu.addMenu("&Scripts")
+        triggers_action = QAction("Triggers", self)
+        triggers_action.triggered.connect(self._open_triggers_window)
+        scripts_menu.addAction(triggers_action)
 
-        # Scripts Editor action
-        scripts_action = QAction("Scripts Editor", self)
-        scripts_action.triggered.connect(self._open_scripting_window)
-        tools_menu.addAction(scripts_action)
 
     def _create_status_bar(self):
         status = QStatusBar()
@@ -95,13 +95,15 @@ class MainWindow(QMainWindow):
     def _handle_command(self, text: str):
         self.app.send_to_mud(text)
 
-    def _open_scripting_window(self):
-        """
-        Show the Scripts Editor, creating it if needed.
-        """
-        if getattr(self, "scripting_window", None) is None:
-            # app.script_manager is passed in when MainWindow is constructed
-            self.scripting_window = ScriptingWindow(self.app, self.app.script_manager)
-        self.scripting_window.show()
-        self.scripting_window.raise_()
-        self.scripting_window.activateWindow()
+    def _open_triggers_window(self):
+        if not hasattr(self, "trigger_window"):
+            self.trigger_window = TriggerEditorWindow(
+                parent          = self,
+                trigger_manager = self.app.trigger_manager,
+                script_manager  = self.app.script_manager
+            )
+        self.trigger_window.show()
+        self.trigger_window.raise_()
+        self.trigger_window.activateWindow()
+
+

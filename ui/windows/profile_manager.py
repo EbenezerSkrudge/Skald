@@ -9,13 +9,10 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Signal
 
-from core.config import PROFILE_BASE_PATH, HOST, PORT
+from core.config import PROFILE_BASE_PATH
 from core.utils import is_valid_profile
-from core.settings import load_settings, save_settings
+from core.settings import save_settings
 from core.db import init_db
-
-from core.connection import MudConnection
-from ui.windows.main_window import MainWindow
 
 
 def remove_path(path: Path):
@@ -100,7 +97,9 @@ class ProfileManager(QWidget):
                 "font_size": 12,
                 "theme": "dark",
             })
-            init_db(profile_path)
+
+            init_db(profile_path / "data.sqlite")
+
             self.new_profile_input.clear()
             self.load_profiles()
         except Exception as e:
