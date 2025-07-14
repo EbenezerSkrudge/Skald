@@ -1,12 +1,6 @@
 # core/trigger.py
 
 import re
-from dataclasses import dataclass, field
-from typing import Pattern, Callable
-
-# core/trigger.py
-
-import re
 from typing        import Callable, Pattern
 from core.context  import Context
 
