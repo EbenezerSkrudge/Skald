@@ -5,19 +5,16 @@ from typing  import Optional
 
 from PySide6.QtWidgets import QApplication
 
+from core.alias_manager    import AliasManager
+from core.connection       import MudConnection
+from core.config           import HOST, PORT
+from core.db               import init_db
+from core.settings         import load_settings
+from core.script_manager   import ScriptManager
+from core.trigger_manager  import TriggerManager
+from core.system_triggers  import register_system_triggers
 from ui.windows.profile_manager import ProfileManager
 from ui.windows.main_window     import MainWindow
-
-from core.config     import HOST, PORT
-from core.settings   import load_settings
-from core.telnet     import TelnetCmd
-from core.connection import MudConnection
-from core.db         import init_db
-
-from core.script_manager  import ScriptManager
-from core.trigger_manager import TriggerManager
-from core.system_triggers import register_system_triggers
-
 
 
 class App:
@@ -29,54 +26,57 @@ class App:
         return cls._instance
 
     def __init__(self):
+        # ensure singleton init runs only once
         if getattr(self, "_initialized", False):
             return
         self._initialized = True
 
-        self.debug_telnet = True
-        self.qt_app       = QApplication([])
-        self.main_window  = None
-        self.connection   = MudConnection()
-        self.profile_path = Path()
-        self.settings     = {}
+        self.debug_telnet    = True
+        self.qt_app          = QApplication([])
+        self.main_window     = None
+        self.connection      = MudConnection()
+        self.profile_path    = Path()
+        self.settings        = {}
 
-        self.script_manager = None
+        self.script_manager  = None
         self.trigger_manager = None
+        self.alias_manager   = None
 
-        # Telnet hooks
+        # Telnet event hooks
         self.connection.dataReceived.connect(self._on_data)
         self.connection.errorOccurred.connect(self._on_error)
         self.connection.disconnected.connect(self._on_disconnect)
         self.connection.gmcpReceived.connect(self._on_gmcp)
         self.connection.negotiation.connect(self._on_negotiation)
 
-        # # Initialize DB & load triggers
-        # init_db(self.profile_path / "data.sqlite")
-
     def start(self):
+        # Show profile picker first
         pm = ProfileManager(self)
         pm.profileSelected.connect(self.on_profile_selected)
         pm.show()
         self.qt_app.exec()
 
     def on_profile_selected(self, profile_path: Path):
+        # Persist selection
         self.profile_path = profile_path
         self.settings     = load_settings(profile_path)
 
-        # Initialise database
+        # Init database for this profile
         init_db(profile_path / "data.sqlite")
 
-        # Create script managers
+        # Instantiate managers
+        self.alias_manager   = AliasManager()
         self.trigger_manager = TriggerManager(self)
-        self.script_manager = ScriptManager(self, self.trigger_manager)
+        self.script_manager  = ScriptManager(self, self.trigger_manager)
         register_system_triggers(self.trigger_manager, self.send_to_mud)
 
-        # Create and/or open main window
+        # Show main UI
         if self.main_window is None:
             self.main_window = MainWindow(self)
         self.main_window.showMaximized()
         self.main_window.console.input.setFocus()
 
+        # Connect to MUD
         self.connection.connect_to_host(HOST, PORT)
 
     def toggle_telnet_debug(self):
@@ -87,84 +87,57 @@ class App:
         )
 
     def send_to_mud(self, text: str):
+        """Expands aliases then sends to the MUD."""
         sock = self.connection.socket
         if sock and sock.isOpen():
-            self.connection.send(text)
+            expanded = AliasManager().expand(text)
+            self.connection.send(expanded)
         else:
             self.main_window.console.echo_html(
                 '<span style="color:orange">NO CONNECTION</span>'
             )
 
     def send_gmcp(self, package: str, payload: Optional[str] = None):
-        if self.connection.socket.isOpen():
+        """Send GMCP package, optionally logging to console."""
+        if self.connection.socket and self.connection.socket.isOpen():
             if self.debug_telnet:
-                txt = package if payload is None else f"{package} {payload}"
-                self.main_window.console.echo(f"[CLIENT GMCP] {txt}")
+                msg = package if payload is None else f"{package} {payload}"
+                self.main_window.console.echo(f"[CLIENT GMCP] {msg}")
             self.connection.send_gmcp(package, payload)
         else:
             self.main_window.console.echo_html(
                 '<span style="color:orange">NO CONNECTION</span>'
             )
 
-    # ─── Trigger methods ──────────────────────────────────────────
-
-    def add_trigger(
-        self,
-        name: str,
-        regex: str,
-        action_template: str,
-        enabled: bool = True,
-        priority: int = 0
-    ):
-        """
-        Delegate to TriggerManager; it will persist and register.
-        """
-        # build the callable that will run when the regex matches
-        def action_fn(match):
-            self.send_to_mud(action_template.format(**match.groupdict()))
-
-        self.trigger_manager.add_trigger(
-            name             = name,
-            regex            = regex,
-            action           = action_fn,
-            enabled          = enabled,
-            priority         = priority,
-        )
-
-    def remove_trigger(self, name: str):
-        """
-        Delegate removal to TriggerManager (also deletes from DB).
-        """
-        self.trigger_manager.remove_trigger(name)
-
-    # ─── Internal slots ──────────────────────────────────────────
+    # ─── Incoming Data ──────────────────────────────────────────
 
     def _on_data(self, text: str):
+        # Echo raw text and fire triggers
         self.main_window.console.echo(text)
         self.trigger_manager.check_triggers(text)
-
-    def _on_disconnect(self):
-        pass
 
     def _on_gmcp(self, pkg: str, payload):
         if self.debug_telnet:
             self.main_window.console.echo(f"[SERVER GMCP] {pkg} = {payload}")
 
     def _on_negotiation(self, cmd_value: int, opt: int):
+        from core.telnet import TelnetCmd
+
         match opt:
             case TelnetCmd.ECHO:
                 cmd = TelnetCmd(cmd_value)
                 inp = self.main_window.console.input
-
                 match cmd:
                     case TelnetCmd.WILL:
                         inp.setMasking(True)
                     case TelnetCmd.WONT:
                         inp.setMasking(False)
-                    case _:
-                        pass
             case _:
                 return
+
+    def _on_disconnect(self):
+        # You might show a "disconnected" banner here
+        pass
 
     def _on_error(self, msg: str):
         self.main_window.console.echo(f"[ERROR] {msg}")

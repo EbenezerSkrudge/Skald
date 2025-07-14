@@ -1,68 +1,76 @@
-# core/trigger_manager.py
-
 import re
-from typing import List, Optional
+from typing       import List, Optional
 
-from pony.orm        import db_session
-from core.context    import Context
-from core.trigger    import Trigger as TriggerData
-from data.models     import Script  # Pony entity for scripts
+from pony.orm     import db_session
+from core.context import Context
+from core.trigger import Trigger as TriggerData
+from data.models  import Script    # Pony entity for triggers
 
 
 class TriggerManager:
     """
-    Manages regex‐driven triggers at runtime *and* persists them in the DB.
-    UI can call create(), update(), delete(), toggle(), get_all(), find().
+    Manages regex-driven triggers at runtime *and* persists them in the DB.
+    UI can call create(), update(), delete(), toggle(), get_all(), find(),
+    or the simpler create_template_trigger()/remove_template_trigger().
     """
 
     def __init__(self, app):
-        # Single shared context for all callbacks
+        # Shared Context for all callbacks
         self._ctx       = Context(app)
         # In-memory list of compiled triggers
         self._triggers: List[TriggerData] = []
-        # Load any existing triggers from the DB
+        # Load existing triggers from the DB
         self._load_all_from_db()
 
-    # ─── Internal Helpers ─────────────────────────────────────
+    # ─── Public Reload/Clear ───────────────────────────────────
+
+    def clear_all(self) -> None:
+        """
+        Remove every in-memory trigger.
+        ScriptManager.load_all_scripts() uses this before re-adding.
+        """
+        self._triggers.clear()
+
+    def reload(self) -> None:
+        """
+        Clear and then load all enabled triggers from the DB.
+        """
+        self.clear_all()
+        self._load_all_from_db()
+
+    # ─── Internal Helpers ───────────────────────────────────────
+
+    @db_session
+    def _load_all_from_db(self) -> None:
+        """Load enabled trigger-category Scripts into memory."""
+        for rec in Script.select(lambda s: s.category == "trigger" and s.enabled):
+            self._compile_and_register(rec)
 
     def _compile_and_register(self, rec: Script) -> None:
-        # compile the Python code into a code‐object
-        code_obj = compile(rec.code or "", f"<script:{rec.name}>", "exec")
+        """Compile the Python code for one Script and register its action."""
+        code_obj = compile(rec.code or "", f"<trigger:{rec.name}>", "exec")
 
-        def action_fn(match, ctx):
-            # inject both `ctx` and convenient aliases into the locals
+        def action_fn(match, ctx=self._ctx):
             exec(
-                code_obj,
-                {},
+                code_obj, {},
                 {
                     "match": match,
                     "ctx":   ctx,
                     "echo":  ctx.echo,
-                    "send":  ctx.send_to_mud,   # or ctx.send
+                    "send":  ctx.send_to_mud,
                 }
             )
 
-            self.add_trigger(
-                name=rec.name,
-                regex=rec.pattern or "",
-                action=action_fn,
-                enabled=rec.enabled,
-                priority=rec.priority
-            )
+        # Register in memory
+        self.add_trigger(
+            name     = rec.name,
+            regex    = rec.pattern or "",
+            action   = action_fn,
+            enabled  = rec.enabled,
+            priority = rec.priority
+        )
 
-    @db_session
-    def _load_all_from_db(self):
-        for rec in Script.select(lambda s: s.category == "trigger"):
-            self._compile_and_register(rec)
-
-    def clear_all(self):
-        """
-        Remove every in-memory trigger.
-        Call this before a full reload so you don’t double-register.
-        """
-        self._triggers.clear()
-
-    # ─── In-Memory Matching ───────────────────────────────────
+    # ─── In-Memory Matching ────────────────────────────────────
 
     def add_trigger(
         self,
@@ -71,10 +79,10 @@ class TriggerManager:
         action,
         enabled: bool = True,
         priority: int = 0
-    ):
+    ) -> None:
         """
-        (Re)compile + register a trigger in memory.
-        This does *not* touch the database.
+        Compile & register a trigger in memory only.
+        To persist, use create() or create_template_trigger().
         """
         compiled = re.compile(regex)
         trig = TriggerData(
@@ -86,53 +94,44 @@ class TriggerManager:
             enabled  = enabled,
         )
 
-        # Replace any old trigger by name, then sort ascending
+        # Remove any old by name, then insert and sort
         self._triggers = [t for t in self._triggers if t.name != name] + [trig]
         self._triggers.sort()
 
-    def remove_trigger(self, name: str):
-        """Remove from the in-memory registry only."""
+    def remove_trigger(self, name: str) -> None:
+        """Unregister a trigger in memory only."""
         self._triggers = [t for t in self._triggers if t.name != name]
 
-    def check_triggers(self, text: str):
+    def check_triggers(self, text: str) -> None:
         """
-        Call on each incoming line:
-        fire the first matching, enabled trigger,
-        passing in both match & our Context.
+        On each incoming line, fire the first matching enabled trigger,
+        passing (match, Context).
         """
         for trig in self._triggers:
             if not trig.enabled:
                 continue
             m = trig.pattern.search(text)
-            if not m:
-                continue
-            # ALWAYS call with TWO parameters now:
-            trig.action(m, self._ctx)
-            break
+            if m:
+                trig.action(m, self._ctx)
+                break
 
-
-    # ─── Persistence & CRUD API ──────────────────────────────
+    # ─── Persistence & CRUD API ────────────────────────────────
 
     @db_session
     def get_all(self) -> List[Script]:
-        """
-        Return a sorted list of all trigger‐category Script entities.
-        UI can iterate these to populate the list.
-        """
-        return list(Script.select(lambda s: s.category == "trigger")
-                           .order_by(Script.priority))
+        """Return all trigger Scripts, ordered by priority."""
+        return list(
+            Script
+            .select(lambda s: s.category == "trigger")
+            .order_by(Script.priority)
+        )
 
     @db_session
-    def find(self, name: str) -> Script | None:
-        """
-        Return the single trigger‐category Script with this name,
-        or None if it doesn’t exist.
-        """
-        return (
-            Script
-            .select(lambda s: s.name == name and s.category == "trigger")
-            .first()
-        )
+    def find(self, name: str) -> Optional[Script]:
+        """Find a trigger Script by name, or None."""
+        return Script.select(
+            lambda s: s.name == name and s.category == "trigger"
+        ).first()
 
     @db_session
     def create(
@@ -140,12 +139,12 @@ class TriggerManager:
         name: str,
         regex: str,
         code: str,
-        priority: int = 1,
+        priority: int = 0,
         enabled: bool = True
     ) -> Script:
         """
-        Create a new trigger in the DB, then register it in memory.
-        Returns the new Pony Script record.
+        Persist a Python-code trigger and register it in memory.
+        Returns the new Script record.
         """
         rec = Script(
             name     = name,
@@ -170,11 +169,11 @@ class TriggerManager:
         enabled: bool
     ) -> Optional[Script]:
         """
-        Update an existing trigger in the DB and in memory.
-        old_name allows renaming.
+        Update a trigger record and re-register in memory.
+        old_name lets you rename safely.
         """
         rec = self.find(old_name)
-        if rec is None:
+        if not rec:
             return None
 
         rec.name     = name
@@ -184,16 +183,13 @@ class TriggerManager:
         rec.enabled  = enabled
         rec.flush()
 
-        # re-register under new name & settings
         self.remove_trigger(old_name)
         self._compile_and_register(rec)
         return rec
 
     @db_session
     def delete(self, name: str) -> None:
-        """
-        Remove the trigger from both DB and in-memory registry.
-        """
+        """Delete a trigger from DB and unregister it in memory."""
         rec = self.find(name)
         if rec:
             rec.delete()
@@ -202,11 +198,11 @@ class TriggerManager:
     @db_session
     def toggle(self, name: str) -> Optional[bool]:
         """
-        Flip enabled/disabled in DB and in memory.
-        Returns the new enabled state or None if not found.
+        Flip enabled/disabled. Persist the change and update memory.
+        Returns new state or None if not found.
         """
         rec = self.find(name)
-        if rec is None:
+        if not rec:
             return None
 
         rec.enabled = not rec.enabled
@@ -219,3 +215,34 @@ class TriggerManager:
 
         return rec.enabled
 
+    # ─── Template-Trigger Convenience ────────────────────────
+
+    def create_template_trigger(
+        self,
+        name: str,
+        regex: str,
+        template: str,
+        priority: int = 0,
+        enabled: bool = True
+    ) -> Script:
+        """
+        Shorthand: persist a simple {named}-template trigger
+        whose action only sends formatted text via ctx.send_to_mud.
+        """
+        def action_fn(match, ctx=self._ctx):
+            out = template.format(**match.groupdict())
+            ctx.send_to_mud(out)
+
+        rec = self.create(
+            name     = name,
+            regex    = regex,
+            code     = "",  # not used for template triggers
+            priority = priority,
+            enabled  = enabled
+        )
+        self.add_trigger(name, regex, action_fn, enabled, priority)
+        return rec
+
+    def remove_template_trigger(self, name: str) -> None:
+        """Shorthand to delete a simple template-trigger."""
+        self.delete(name)
