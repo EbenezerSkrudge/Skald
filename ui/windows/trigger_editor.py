@@ -5,7 +5,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QToolBar, QToolButton, QListWidget, QLineEdit,
-    QSpinBox, QLabel, QTextEdit, QMessageBox, QStyle, QListWidgetItem
+    QSpinBox, QLabel, QMessageBox, QStyle, QListWidgetItem
 )
 
 from ui.widgets.toggle_switch import ToggleSwitch  # <-- your custom switch

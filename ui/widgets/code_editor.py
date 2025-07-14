@@ -194,7 +194,7 @@ class CodeEditor(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        self.editor = self.editor = CodeTextEdit()
+        self.editor = CodeTextEdit()
         font_db = QFontDatabase()
         mono_family = font_db.systemFont(QFontDatabase.FixedFont).family()
         mono_font = QFont(mono_family, 11)
@@ -284,3 +284,11 @@ class CodeEditor(QWidget):
 
     def sizeHint(self):
         return self.editor.sizeHint()
+
+    def clear(self):
+        """
+        Clear the text in the embedded editor.
+        This makes CodeEditor.clear() valid for calling code.
+        """
+        self.editor.clear()
+
