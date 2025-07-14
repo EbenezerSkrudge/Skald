@@ -1,3 +1,5 @@
+# ui/widgets/toggle_switch.py
+
 from PySide6.QtCore import Qt, Property, QPropertyAnimation, Signal, QRectF
 from PySide6.QtGui import QPainter, QColor, QBrush
 from PySide6.QtWidgets import QWidget
@@ -9,19 +11,19 @@ class ToggleSwitch(QWidget):
         super().__init__(parent)
         self.setFixedSize(60, 28)
         self._checked   = True
-        self._sliderPos = 1.0
+        self._slider_pos = 1.0
 
-        self._anim = QPropertyAnimation(self, b"sliderPos", self)
+        self._anim = QPropertyAnimation(self, b"slider_pos", self)
         self._anim.setDuration(150)
 
     # Actual property logic
     @Property(float)
     def slider_pos(self):
-        return self._sliderPos
+        return self._slider_pos
 
     @slider_pos.setter
     def slider_pos(self, pos):
-        self._sliderPos = pos
+        self._slider_pos = pos
         self.update()
 
     @Property(bool)
@@ -38,7 +40,7 @@ class ToggleSwitch(QWidget):
     def set_checked(self, checked: bool):
         self._checked = checked
         self._anim.stop()
-        self._anim.setStartValue(self._sliderPos)
+        self._anim.setStartValue(self._slider_pos)
         self._anim.setEndValue(1.0 if checked else 0.0)
         self._anim.start()
         self.update()
@@ -52,7 +54,7 @@ class ToggleSwitch(QWidget):
 
         bg_rect = QRectF(2, 2, self.width()-4, self.height()-4)
         knob_diam = self.height() - 6
-        knob_x = 3 + self._sliderPos * (self.width() - knob_diam - 6)
+        knob_x = 3 + self._slider_pos * (self.width() - knob_diam - 6)
         knob_rect = QRectF(knob_x, 3, knob_diam, knob_diam)
 
         # background color
