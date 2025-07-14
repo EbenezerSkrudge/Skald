@@ -1,13 +1,15 @@
 # ui/windows/trigger_editor.py
 
 from PySide6.QtCore    import Qt, QSize
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QToolBar, QToolButton, QListWidget, QLineEdit,
-    QSpinBox, QLabel, QTextEdit, QMessageBox, QStyle
+    QSpinBox, QLabel, QTextEdit, QMessageBox, QStyle, QListWidgetItem
 )
 
 from ui.widgets.toggle_switch import ToggleSwitch  # <-- your custom switch
+from ui.widgets.code_editor   import CodeEditor
 
 class TriggerEditorWindow(QMainWindow):
     def __init__(self, parent, trigger_manager, script_manager):
@@ -88,7 +90,7 @@ class TriggerEditorWindow(QMainWindow):
 
         # ── Action editor ─────────────────────────────────────
         right_layout.addWidget(QLabel("Action:"))
-        self.code_edit = QTextEdit()
+        self.code_edit = CodeEditor()
         right_layout.addWidget(self.code_edit, 2)
 
         # Initially disable action buttons
@@ -101,13 +103,23 @@ class TriggerEditorWindow(QMainWindow):
         self.new_btn.clicked.connect(self._on_new)
         self.save_btn.clicked.connect(self._on_save)
         self.delete_btn.clicked.connect(self._on_delete)
+        self.enabled_switch.toggled.connect(self._on_toggle_changed)
 
     def _populate_list(self):
         self.list.clear()
         for rec in self.trigger_manager.get_all():
-            self.list.addItem(rec.name)
+            item = QListWidgetItem()
+            item.setText(f"✅ {rec.name}" if rec.enabled else f"❌ {rec.name}")
+            item.setData(Qt.UserRole, rec.name)  # store actual name
+            color = QColor("#4caf50") if rec.enabled else QColor("#999")
+            item.setForeground(color)
+            self.list.addItem(item)
 
-    def _on_select(self, name: str):
+    def _on_select(self, label: str):
+        item = self.list.currentItem()
+        if not item:
+            return
+        name = item.data(Qt.UserRole)
         rec = self.trigger_manager.find(name)
         if not rec:
             return
@@ -116,10 +128,9 @@ class TriggerEditorWindow(QMainWindow):
         self.name_edit.setText(rec.name)
         self.priority_spin.setValue(rec.priority)
         self.pattern_edit.setText(rec.pattern or "")
-        self.code_edit.setPlainText(rec.code or "")
+        self.code_edit.set_text(rec.code or "")
         self.enabled_switch.set_checked(rec.enabled)
 
-        # Enable action controls
         for w in (self.save_btn, self.delete_btn, self.enabled_switch):
             w.setEnabled(True)
 
@@ -140,7 +151,7 @@ class TriggerEditorWindow(QMainWindow):
         name     = self.name_edit.text().strip()
         pattern  = self.pattern_edit.text().strip()
         priority = self.priority_spin.value()
-        code     = self.code_edit.toPlainText()
+        code     = self.code_edit.text()
         enabled  = self.enabled_switch.is_checked()
 
         if not name or not pattern:
@@ -182,3 +193,24 @@ class TriggerEditorWindow(QMainWindow):
         self.script_manager.load_all_scripts()
         self._populate_list()
         self._on_new()
+
+    def _on_toggle_changed(self, enabled: bool):
+        if not self.current_name:
+            # No selected trigger — ignore until one is picked or saved
+            return
+
+        # Update only the 'enabled' field
+        rec = self.trigger_manager.find(self.current_name)
+        if rec:
+            self.trigger_manager.update(
+                old_name=rec.name,
+                name=rec.name,
+                regex=rec.pattern,
+                code=rec.code,
+                priority=rec.priority,
+                enabled=enabled
+            )
+
+            self.script_manager.load_all_scripts()
+            self._populate_list()
+
