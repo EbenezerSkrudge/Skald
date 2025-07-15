@@ -65,7 +65,7 @@ class App:
         init_db(profile_path / "data.sqlite")
 
         # Instantiate managers
-        self.alias_manager   = AliasManager()
+        self.alias_manager   = AliasManager(self)
         self.trigger_manager = TriggerManager(self)
         self.script_manager  = ScriptManager(self, self.trigger_manager)
         register_system_triggers(self.trigger_manager, self.send_to_mud)
@@ -87,11 +87,13 @@ class App:
         )
 
     def send_to_mud(self, text: str):
-        """Expands aliases then sends to the MUD."""
         sock = self.connection.socket
         if sock and sock.isOpen():
-            expanded = AliasManager().expand(text)
-            self.connection.send(expanded)
+            # 1) Let aliases run first.  If one matches, it executes code & sends.
+            handled = self.alias_manager.process(text)
+            if not handled:
+                # 2) No alias caught it? Just send raw.
+                self.connection.send(text)
         else:
             self.main_window.console.echo_html(
                 '<span style="color:orange">NO CONNECTION</span>'

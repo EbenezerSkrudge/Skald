@@ -1,137 +1,40 @@
 # core/alias_manager.py
 
 import re
-from typing import List, Optional
-
+from typing import List, Optional, Callable
 from pony.orm import db_session
+from core.context import Context
 from data.models import Script  # Pony entity for aliases
 
 
 class AliasManager:
     """
     Manages regex‐driven aliases at runtime and persists them in the DB.
-    API: create(), update(), delete(), toggle(), get_all(), find(), expand().
+    UI/ScriptManager can call clear_all(), register_alias(), reload(),
+    plus full CRUD: create(), update(), delete(), toggle(), get_all(), find().
     """
 
-    def __init__(self):
-        # In‐memory list of (priority, compiled_pattern, template)
-        self._aliases: List[tuple[int, re.Pattern, str]] = []
-        self._load_all_from_db()
+    def __init__(self, app):
+        # Shared Context for alias action callbacks
+        self._ctx = Context(app)
+        # In-memory list of (priority, compiled_pattern, action_fn)
+        self._aliases: List[tuple[int, re.Pattern, Callable]] = []
+        # Initialize from DB
+        self.reload()
 
-    # ─── Public Reload/Clear ───────────────────────────────────
+    # ─── Public ───────────────────────────────────
 
     def clear_all(self) -> None:
-        """
-        Remove every alias from in‐memory registry.
-        """
+        """Clear all in-memory aliases."""
         self._aliases.clear()
 
     def reload(self) -> None:
         """
-        Clear then re‐load all enabled aliases from DB.
+        Clear and re-load all enabled alias Scripts from the DB,
+        compiling and registering each.
         """
         self.clear_all()
         self._load_all_from_db()
-
-    # ─── Internal Helpers ───────────────────────────────────────
-
-    @db_session
-    def _load_all_from_db(self) -> None:
-        """
-        Load enabled alias‐category Scripts into memory.
-        """
-        for rec in Script.select(lambda s: s.category == "alias" and s.enabled):
-            try:
-                pattern = rec.pattern or ""
-                compiled = re.compile(pattern)
-            except re.error:
-                # Skip invalid regex
-                continue
-            self._aliases.append((rec.priority, compiled, rec.code))
-        # Sort descending so highest priority first
-        self._aliases.sort(key=lambda t: -t[0])
-
-    # ─── Expansion ─────────────────────────────────────────────
-
-    def expand(self, line: str, max_depth: int = 5) -> str:
-        """
-        Try to match & expand an alias. Loops up to max_depth for chained
-        expansions. Returns original if no alias fires.
-        """
-        result = line
-        depth = 0
-
-        while depth < max_depth:
-            for _, pattern, template in self._aliases:
-                m = pattern.match(result)
-                if not m:
-                    continue
-
-                out = template
-                # Replace {1}, {2}, ... with capture groups
-                for i, grp in enumerate(m.groups(), start=1):
-                    out = out.replace(f"{{{i}}}", grp or "")
-                result = out
-                break
-            else:
-                return result
-
-            depth += 1
-
-        return result
-
-    # ─── Persistence & CRUD API ────────────────────────────────
-
-    @db_session
-    def get_all(self) -> List[Script]:
-        """
-        Return all alias Scripts from the DB, ordered by priority.
-        """
-        return list(
-            Script
-            .select(lambda s: s.category == "alias")
-            .order_by(Script.priority)
-        )
-
-    @db_session
-    def find(self, name: str) -> Optional[Script]:
-        """
-        Return the alias Script with this name, or None if not found.
-        """
-        return Script.select(
-            lambda s: s.name == name and s.category == "alias"
-        ).first()
-
-    @db_session
-    def create(
-            self,
-            name: str,
-            pattern: str,
-            template: str,
-            priority: int = 0,
-            enabled: bool = True
-    ) -> Script:
-        """
-        Persist a new alias in the DB and register it in memory.
-        """
-        rec = Script(
-            name=name,
-            category="alias",
-            pattern=pattern,
-            code=template,
-            enabled=enabled,
-            priority=priority
-        )
-        rec.flush()
-
-        # register in-memory
-        try:
-            compiled = re.compile(pattern)
-        except re.error:
-            return rec
-        self._aliases.append((rec.priority, compiled, rec.code))
-        self._aliases.sort(key=lambda t: -t[0])
-        return rec
 
     @db_session
     def update(
@@ -144,8 +47,8 @@ class AliasManager:
             enabled: bool
     ) -> Optional[Script]:
         """
-        Update an existing alias in DB and in memory.
-        old_name allows renaming.
+        Update an existing alias Script in the DB and refresh in‐memory.
+        old_name lets you rename safely.
         """
         rec = self.find(old_name)
         if not rec:
@@ -158,34 +61,129 @@ class AliasManager:
         rec.enabled = enabled
         rec.flush()
 
-        # refresh in-memory list
+        # rebuild in‐memory list so priorities & enabled flags take effect
         self.reload()
         return rec
 
-    @db_session
-    def delete(self, name: str) -> None:
-        """
-        Remove alias from DB and in-memory registry.
-        """
-        rec = self.find(name)
-        if rec:
-            rec.delete()
-        # remove from memory
-        self._aliases = [t for t in self._aliases if t[1].pattern != (rec.pattern or "")]
+    # ─── Internal DB Loader ────────────────────────────────────
 
     @db_session
-    def toggle(self, name: str) -> Optional[bool]:
+    def _load_all_from_db(self) -> None:
         """
-        Flip enabled/disabled in DB and in memory.
-        Returns new state or None if not found.
+        Load all Scripts with category=='alias' and enabled==True,
+        compile their code into action_fns, and register them.
         """
-        rec = self.find(name)
-        if not rec:
-            return None
+        for rec in Script.select(lambda s: s.category == "alias" and s.enabled):
+            pattern = rec.pattern or ""
+            try:
+                compiled = re.compile(pattern)
+            except re.error:
+                continue  # skip invalid regex
 
-        rec.enabled = not rec.enabled
+            # Compile the Python code into a code object
+            code_obj = compile(rec.code or "", f"<alias:{rec.name}>", "exec")
+
+            # Build an action_fn that execs the code with match & ctx
+            def make_action(code_obj=code_obj):
+                def action_fn(match):
+                    exec(
+                        code_obj, {},
+                        {
+                            "match": match,
+                            "ctx": self._ctx,
+                            "echo": self._ctx.echo,
+                            "send": self._ctx.send,
+                        }
+                    )
+
+                return action_fn
+
+            action_fn = make_action()
+            self.register_alias(pattern, action_fn, rec.priority)
+
+    # ─── In-Memory Registration ───────────────────────────────
+
+    def register_alias(
+            self,
+            pattern: str,
+            action_fn: Callable[[re.Match], None],
+            priority: int = 0
+    ) -> None:
+        """
+        Register one alias in memory only.
+        pattern: regex string
+        action_fn: called with the Match when outgoing text matches
+        priority: higher priority runs first
+        """
+        compiled = re.compile(pattern)
+        self._aliases.append((priority, compiled, action_fn))
+        # Sort so highest priority first
+        self._aliases.sort(key=lambda x: -x[0])
+
+    def remove_alias(self, name: str) -> None:
+        """
+        Unregister any alias with this name from memory.
+        Note: name isn’t stored here, so this is a no-op unless you track names.
+        You may instead call reload() after delete().
+        """
+        # If you need name-based removal, you’ll need to store name in the tuple.
+        self.reload()
+
+    # ─── Expansion Logic ──────────────────────────────────────
+
+    def process(self, line: str) -> bool:
+        """
+        Called by App.send_to_mud(). Iterates aliases by priority:
+        first matching alias.executes its Python action and returns True.
+        If none match, returns False.
+        """
+        for _, compiled, fn in self._aliases:
+            m = compiled.match(line)
+            if m:
+                fn(m)
+                return True
+        return False
+
+    # ─── Persistence & CRUD API ────────────────────────────────
+
+    @db_session
+    def get_all(self) -> List[Script]:
+        """Return all alias Scripts from the DB, ordered by priority."""
+        return list(
+            Script
+            .select(lambda s: s.category == "alias")
+            .order_by(Script.priority)
+        )
+
+    @db_session
+    def find(self, name: str) -> Optional[Script]:
+        """Return the alias Script record with this name, or None."""
+        return Script.select(
+            lambda s: s.name == name and s.category == "alias"
+        ).first()
+
+    @db_session
+    def create(
+            self,
+            name: str,
+            pattern: str,
+            code: str,
+            priority: int = 0,
+            enabled: bool = True
+    ) -> Script:
+        """
+        Persist a new alias in the DB and register it in memory.
+        code: full Python to exec on match.
+        """
+        rec = Script(
+            name=name,
+            category="alias",
+            pattern=pattern,
+            code=code,
+            enabled=enabled,
+            priority=priority
+        )
         rec.flush()
 
-        # refresh in-memory list
+        # Compile & register immediately
         self.reload()
-        return rec.enabled

@@ -69,7 +69,7 @@ class AliasEditorWindow(QMainWindow):
         r1.addSpacing(12)
         r1.addWidget(QLabel("Priority:"))
         self.priority_spin = QSpinBox()
-        self.priority_spin.setMinimum(0)
+        self.priority_spin.setMinimum(1)
         r1.addWidget(self.priority_spin)
 
         r1.addSpacing(12)
