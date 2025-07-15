@@ -11,6 +11,7 @@ from core.config           import HOST, PORT
 from core.db               import init_db
 from core.settings         import load_settings
 from core.script_manager   import ScriptManager
+from core.timer_manager import TimerManager
 from core.trigger_manager  import TriggerManager
 from core.system_triggers  import register_system_triggers
 from ui.windows.profile_manager import ProfileManager
@@ -39,8 +40,11 @@ class App:
         self.settings        = {}
 
         self.script_manager  = None
+        self.timer_manager   = None
         self.trigger_manager = None
         self.alias_manager   = None
+
+        self._event_handlers: dict[str, list] = {}
 
         # Telnet event hooks
         self.connection.dataReceived.connect(self._on_data)
@@ -66,8 +70,10 @@ class App:
 
         # Instantiate managers
         self.alias_manager   = AliasManager(self)
+        self.timer_manager   = TimerManager(self)
         self.trigger_manager = TriggerManager(self)
         self.script_manager  = ScriptManager(self, self.trigger_manager)
+
         register_system_triggers(self.trigger_manager, self.send_to_mud)
 
         # Show main UI
@@ -110,6 +116,33 @@ class App:
             self.main_window.console.echo_html(
                 '<span style="color:orange">NO CONNECTION</span>'
             )
+
+    # ——— Event‐handler API ——————————————————————————————————
+
+    def register_event_handler(self, event_name: str, fn: callable) -> None:
+        """
+        Called by ScriptManager for each Script.category == "on_<something>".
+        """
+        self._event_handlers.setdefault(event_name, []).append(fn)
+
+    def clear_event_handlers(self) -> None:
+        """
+        Wipe out all script‐driven event handlers
+        before re‐loading scripts.
+        """
+        self._event_handlers.clear()
+
+    def fire_event(self, event_name: str, *args) -> None:
+        """
+        Invoke all handlers registered under that name.
+        Handlers were created with a captured Context, so just call them.
+        """
+        for fn in self._event_handlers.get(event_name, []):
+            try:
+                fn(*args)
+            except Exception:
+                # you may want to log or echo errors here
+                pass
 
     # ─── Incoming Data ──────────────────────────────────────────
 

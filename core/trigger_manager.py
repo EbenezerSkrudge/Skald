@@ -57,7 +57,7 @@ class TriggerManager:
                     "match": match,
                     "ctx":   ctx,
                     "echo":  ctx.echo,
-                    "send":  ctx.send_to_mud,
+                    "send":  ctx.send,
                 }
             )
 

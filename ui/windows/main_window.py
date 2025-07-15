@@ -10,6 +10,7 @@ from PySide6.QtGui  import QIcon, QAction
 
 from ui.widgets.console.console import Console
 from ui.windows.alias_editor   import AliasEditorWindow
+from ui.windows.timer_editor import TimerEditorWindow
 from ui.windows.trigger_editor import TriggerEditorWindow
 
 
@@ -87,6 +88,10 @@ class MainWindow(QMainWindow):
         aliases_action.triggered.connect(self._open_aliases_window)
         scripts_menu.addAction(aliases_action)
 
+        timers_action = QAction("Timers", self)
+        timers_action.triggered.connect(self._open_timers_window)
+        scripts_menu.addAction(timers_action)
+
         triggers_action = QAction("Triggers", self)
         triggers_action.triggered.connect(self._open_triggers_window)
         scripts_menu.addAction(triggers_action)
@@ -111,6 +116,17 @@ class MainWindow(QMainWindow):
         self.alias_window.show()
         self.alias_window.raise_()
         self.alias_window.activateWindow()
+
+    def _open_timers_window(self):
+        if not hasattr(self, "timer_window"):
+            self.timer_window = TimerEditorWindow(
+                parent          = self,
+                timer_manager   = self.app.timer_manager,
+                script_manager  = self.app.script_manager
+            )
+        self.timer_window.show()
+        self.timer_window.raise_()
+        self.timer_window.activateWindow()
 
     def _open_triggers_window(self):
         if not hasattr(self, "trigger_window"):
