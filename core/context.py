@@ -8,6 +8,24 @@ if TYPE_CHECKING:
 class Context:
     def __init__(self, app: "App"):
         self._app = app
+        self.vars = {}
+
+    def exec_script(self, code_obj, **extra_locals):
+        """
+        Execute `code_obj` in a sandbox with:
+          - ctx
+          - echo
+          - send
+        plus whatever you pass in `extra_locals`.
+        """
+        sandbox = {
+            "ctx":  self,
+#            "match": match,
+            "echo": self.echo,
+            "send": self.send
+        }
+        sandbox.update(extra_locals)
+        exec(code_obj, {}, sandbox)
 
     def send(self, text: str):
         self._app.send_to_mud(text)

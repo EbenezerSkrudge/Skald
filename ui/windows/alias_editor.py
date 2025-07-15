@@ -1,11 +1,10 @@
 # ui/windows/alias_editor.py
 
 from PySide6.QtCore    import Qt, QSize
-from PySide6.QtGui     import QColor
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
-    QToolBar, QToolButton, QListWidget, QLineEdit,
-    QSpinBox, QLabel, QMessageBox, QStyle, QListWidgetItem
+    QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QToolBar,
+    QToolButton, QListWidget, QListWidgetItem, QLabel,
+    QLineEdit, QSpinBox, QMessageBox, QStyle
 )
 
 from ui.widgets.toggle_switch import ToggleSwitch
@@ -16,6 +15,7 @@ class AliasEditorWindow(QMainWindow):
     def __init__(self, parent, alias_manager, script_manager):
         super().__init__(parent)
         self.setWindowTitle("Alias Editor")
+
         self.alias_manager  = alias_manager
         self.script_manager = script_manager
         self.current_name   = None
@@ -28,19 +28,23 @@ class AliasEditorWindow(QMainWindow):
         container = QWidget()
         self.setCentralWidget(container)
         main_layout = QHBoxLayout(container)
+        main_layout.setContentsMargins(3, 0, 3, 0)
+        main_layout.setSpacing(5)
 
-        # ── Left: List of alias names ────────────────────────
+        # ── Left: list of aliases ─────────────────────────────
         self.list = QListWidget()
         main_layout.addWidget(self.list, 1)
 
-        # ── Right: toolbar + form + template editor ───────────
-        right_container = QWidget()
-        right_layout    = QVBoxLayout(right_container)
-        main_layout.addWidget(right_container, 3)
+        # ── Right: toolbar + form + code editor ──────────────
+        right = QWidget()
+        right_layout = QVBoxLayout(right)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(5)
+        main_layout.addWidget(right, 3)
 
-        # ── Toolbar: New / Save / Delete ─────────────────────
+        # Toolbar
         self.toolbar = QToolBar()
-        self.toolbar.setIconSize(QSize(32, 32))
+        self.toolbar.setIconSize(QSize(24, 24))
         right_layout.addWidget(self.toolbar)
 
         style       = self.style()
@@ -55,46 +59,42 @@ class AliasEditorWindow(QMainWindow):
         for btn in (self.new_btn, self.save_btn, self.delete_btn):
             btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
             btn.setAutoRaise(True)
-            btn.setMinimumSize(40, 40)
+            btn.setMinimumSize(36, 36)
             self.toolbar.addWidget(btn)
 
-        # ── Metadata row: Name / Priority / Enabled ───────────
-        row1 = QWidget(); r1 = QHBoxLayout(row1)
-        r1.setContentsMargins(0, 0, 0, 0)
+        # Form row: Name / Pattern / Priority / Enabled
+        form = QWidget()
+        f = QHBoxLayout(form)
+        f.setContentsMargins(0, 0, 0, 0)
 
-        r1.addWidget(QLabel("Name:"))
+        f.addWidget(QLabel("Name:"))
         self.name_edit = QLineEdit()
-        r1.addWidget(self.name_edit, 1)
+        f.addWidget(self.name_edit, 1)
 
-        r1.addSpacing(12)
-        r1.addWidget(QLabel("Priority:"))
-        self.priority_spin = QSpinBox()
-        self.priority_spin.setMinimum(1)
-        r1.addWidget(self.priority_spin)
-
-        r1.addSpacing(12)
-        r1.addWidget(QLabel("Enabled:"))
-        self.enabled_switch = ToggleSwitch()
-        r1.addWidget(self.enabled_switch)
-
-        right_layout.addWidget(row1)
-
-        # ── Row 2: Pattern (regex) ────────────────────────────
-        row2 = QWidget(); r2 = QHBoxLayout(row2)
-        r2.setContentsMargins(0, 0, 0, 0)
-
-        r2.addWidget(QLabel("Pattern:"))
+        f.addSpacing(12)
+        f.addWidget(QLabel("Pattern:"))
         self.pattern_edit = QLineEdit()
-        r2.addWidget(self.pattern_edit, 1)
+        f.addWidget(self.pattern_edit, 1)
 
-        right_layout.addWidget(row2)
+        f.addSpacing(12)
+        f.addWidget(QLabel("Priority:"))
+        self.priority_spin = QSpinBox()
+        self.priority_spin.setMinimum(0)
+        f.addWidget(self.priority_spin)
 
-        # ── Row 3: Replacement Template ───────────────────────
-        right_layout.addWidget(QLabel("Replacement:"))
-        self.template_edit = CodeEditor()
-        right_layout.addWidget(self.template_edit, 2)
+        f.addSpacing(12)
+        f.addWidget(QLabel("Enabled:"))
+        self.enabled_switch = ToggleSwitch()
+        f.addWidget(self.enabled_switch)
 
-        # Initially disable until an alias is selected or new
+        right_layout.addWidget(form)
+
+        # Code editor (HERE is where code_edit is defined)
+        right_layout.addWidget(QLabel("Code:"))
+        self.code_edit = CodeEditor()
+        right_layout.addWidget(self.code_edit, 2)
+
+        # Disable buttons until an item is selected or "New"
         for w in (self.save_btn, self.delete_btn, self.enabled_switch):
             w.setEnabled(False)
 
@@ -111,7 +111,7 @@ class AliasEditorWindow(QMainWindow):
             prefix = "✅ " if rec.enabled else "❌ "
             item = QListWidgetItem(prefix + rec.name)
             item.setData(Qt.UserRole, rec.name)
-            color = QColor("#4caf50") if rec.enabled else QColor("#999999")
+            color = Qt.green if rec.enabled else Qt.gray
             item.setForeground(color)
             self.list.addItem(item)
 
@@ -126,9 +126,9 @@ class AliasEditorWindow(QMainWindow):
 
         self.current_name = name
         self.name_edit.setText(rec.name)
-        self.priority_spin.setValue(rec.priority)
         self.pattern_edit.setText(rec.pattern or "")
-        self.template_edit.set_text(rec.code or "")
+        self.priority_spin.setValue(rec.priority)
+        self.code_edit.set_text(rec.code or "")
         self.enabled_switch.set_checked(rec.enabled)
 
         for w in (self.save_btn, self.delete_btn, self.enabled_switch):
@@ -138,9 +138,9 @@ class AliasEditorWindow(QMainWindow):
         self.current_name = None
         self.list.clearSelection()
         self.name_edit.clear()
-        self.priority_spin.setValue(0)
         self.pattern_edit.clear()
-        self.template_edit.clear()
+        self.priority_spin.setValue(0)
+        self.code_edit.clear()
         self.enabled_switch.set_checked(True)
 
         for w in (self.save_btn, self.delete_btn, self.enabled_switch):
@@ -149,20 +149,20 @@ class AliasEditorWindow(QMainWindow):
 
     def _on_save(self):
         name     = self.name_edit.text().strip()
-        pattern  = self.pattern_edit.text().strip()
-        template = self.template_edit.text()
+        pattern  = self.pattern_edit.text()
+        code     = self.code_edit.text()
         priority = self.priority_spin.value()
         enabled  = self.enabled_switch.is_checked()
 
-        if not name or not pattern:
-            QMessageBox.warning(self, "Invalid", "Name and Pattern are required.")
+        if not name:
+            QMessageBox.warning(self, "Invalid", "Name is required.")
             return
 
         if self.current_name is None:
             rec = self.alias_manager.create(
                 name     = name,
                 pattern  = pattern,
-                template = template,
+                code     = code,
                 priority = priority,
                 enabled  = enabled
             )
@@ -172,20 +172,21 @@ class AliasEditorWindow(QMainWindow):
                 old_name = self.current_name,
                 name     = name,
                 pattern  = pattern,
-                template = template,
+                code     = code,
                 priority = priority,
                 enabled  = enabled
             )
             self.current_name = name
 
-        # Reload all scripts (aliases + triggers)
         self.script_manager.load_all_scripts()
         self._populate_list()
 
-        # Re‐select the saved alias
-        items = self.list.findItems(name, Qt.MatchExactly)
-        if items:
-            self.list.setCurrentItem(items[0])
+        # Reselect the saved item
+        for i in range(self.list.count()):
+            item = self.list.item(i)
+            if item.data(Qt.UserRole) == self.current_name:
+                self.list.setCurrentItem(item)
+                break
 
     def _on_delete(self):
         if not self.current_name:
@@ -198,16 +199,6 @@ class AliasEditorWindow(QMainWindow):
     def _on_toggle_changed(self, enabled: bool):
         if not self.current_name:
             return
-
-        rec = self.alias_manager.find(self.current_name)
-        if rec:
-            self.alias_manager.update(
-                old_name = rec.name,
-                name     = rec.name,
-                pattern  = rec.pattern or "",
-                template = rec.code,
-                priority = rec.priority,
-                enabled  = enabled
-            )
-            self.script_manager.load_all_scripts()
-            self._populate_list()
+        self.alias_manager.toggle(self.current_name)
+        self.script_manager.load_all_scripts()
+        self._populate_list()

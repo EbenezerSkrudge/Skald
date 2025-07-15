@@ -102,7 +102,30 @@ class MainWindow(QMainWindow):
         status.showMessage("Ready")
 
     def _handle_command(self, text: str):
-        # delegate to App: expands aliases + sends
+        """
+        Called when the user presses enter in the console.
+        Intercepts 'py <code>' for in‐app Python execution.
+        Otherwise forwards to the MUD.
+        """
+        # 1) If it starts with "py ", execute Python locally
+        if text.startswith("py "):
+            code = text[3:]
+
+            # Grab the same Context used in scripts (echo, send, etc.)
+            ctx = self.app.script_manager.ctx
+
+            try:
+                # Compile + exec in a minimal namespace
+                compiled = compile(code, "<console:py>", "exec")
+                ctx.exec_script(compiled)
+            except Exception as e:
+                # Echo errors in red so you see what went wrong
+                self.console.echo_html(
+                    f'<span style="color:red">Python error: {e}</span>'
+                )
+            return
+
+        # 2) Otherwise, normal MUD traffic
         self.app.send_to_mud(text)
 
     def _open_aliases_window(self):

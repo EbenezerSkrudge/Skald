@@ -51,15 +51,7 @@ class TriggerManager:
         code_obj = compile(rec.code or "", f"<trigger:{rec.name}>", "exec")
 
         def action_fn(match, ctx=self._ctx):
-            exec(
-                code_obj, {},
-                {
-                    "match": match,
-                    "ctx":   ctx,
-                    "echo":  ctx.echo,
-                    "send":  ctx.send,
-                }
-            )
+            ctx.exec_script(code_obj, match=match)
 
         # Register in memory
         self.add_trigger(
