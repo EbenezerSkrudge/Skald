@@ -156,8 +156,9 @@ class App:
     def _on_error(self, msg: str):
         log.error(f"[ERROR] {msg}")
 
+    # TODO: Little bit of cludge code here.  Some bug skips the second element of the list so LIB is in twice to compensate.
     def _on_login(self, *args):
-        for stream in ["LIB", "CVB", "MCB"]:
+        for stream in ["LIB", "LIB", "CVB", "MCB"]:
             self.connection.send_gmcp(stream)
 
     @classmethod

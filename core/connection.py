@@ -10,6 +10,7 @@ from core.telnet import TelnetParser, TelnetCmd
 from collections import deque
 
 log = logging.getLogger(__name__)
+logging.basicConfig(level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
 
 class MudConnection(QObject):
@@ -51,7 +52,9 @@ class MudConnection(QObject):
             self.errorOccurred.emit("[Error] Not connected.")
             return
         self._send_queue.append(((text + "\n").encode("utf-8"), False))
-        self._try_send_next()
+
+        if not self._waiting_for_ga:
+            self._try_send_next()
 
     def send_gmcp(self, package: str, payload: Optional[str] = None):
         body = f"{package} {payload}" if payload else package
@@ -60,13 +63,21 @@ class MudConnection(QObject):
               bytes([TelnetCmd.IAC, TelnetCmd.SE])
         self._send_queue.append((msg, True))
         log.info(f"[GMCP QUEUED] {body}")
-        self._try_send_next()
+
+        if not self._waiting_for_ga:
+            self._try_send_next()
 
     def _try_send_next(self):
-        if self._waiting_for_ga or not self._send_queue:
+        if self._waiting_for_ga:
+            log.info("[QUEUE] Waiting for GA")
+            return
+
+        if not self._send_queue:
+            log.info("[QUEUE] Nothing to send")
             return
 
         msg, wait_for_ga = self._send_queue.popleft()
+        log.info(f"[QUEUE] Sending: {msg}")
         self.socket.write(msg)
         self._waiting_for_ga = wait_for_ga
 
