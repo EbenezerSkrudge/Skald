@@ -12,10 +12,10 @@ from core.config import HOST, PORT
 from core.db import init_db
 from core.settings import load_settings
 from core.script_manager import ScriptManager
+from core.signals import signals
 from core.timer_manager import TimerManager
 from core.trigger_manager import TriggerManager
 from core.system_triggers import register_system_triggers
-from core.event_bus import bus
 
 from ui.windows.profile_manager import ProfileManager
 from ui.windows.main_window import MainWindow
@@ -54,10 +54,12 @@ class App:
         self.trigger_manager = None
         self.script_manager = None
 
+        self.gmcp_data = {}
+
         self._event_handlers: dict[str, list] = {}
 
         self._init_connection_events()
-        bus.register("on_login", self._on_login)
+        signals.on_login.connect(self._on_login)
 
     def start(self):
         pm = ProfileManager(self)
@@ -135,6 +137,7 @@ class App:
         self.trigger_manager.check_triggers(text)
 
     def _on_gmcp(self, pkg: str, payload):
+        self.gmcp_data[pkg] = payload
         log.info(f"[>GMCP] {pkg} = {payload}")
 
     def _on_negotiation(self, cmd_value: int, opt: int):

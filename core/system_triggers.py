@@ -1,15 +1,12 @@
 # core/system_triggers.py
 
-from typing import Callable
 from core.trigger_manager import TriggerManager
-from core.event_bus import bus
+from core.signals import signals
 
 def register_system_triggers(manager: TriggerManager):
 
     def _on_login(match, ctx):
-        from core.app import App
-        ctx.echo("Looks like we logged in")
-        bus.fire("on_login")
+        signals.on_login.emit()
 
     manager.add_trigger(
         name="login_alert",

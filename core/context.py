@@ -23,7 +23,8 @@ class Context:
 #            "match": match,
             "echo": self.echo,
             "send": self.send,
-            "send_gmcp": self.send_gmcp
+            "send_gmcp": self.send_gmcp,
+            "gmcp": self._app.gmcp_data
         }
         sandbox.update(extra_locals)
         exec(code_obj, {}, sandbox)
