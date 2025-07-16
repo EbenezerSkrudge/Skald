@@ -46,21 +46,6 @@ class MudConnection(QObject):
         if not self.socket.waitForConnected(timeout):
             self.errorOccurred.emit(f"[Connection failed] {self.socket.errorString()}")
 
-    # PRE QUEUE APPROACH
-    # def send(self, text: str):
-    #     if self.socket.state() != QTcpSocket.ConnectedState:
-    #         self.errorOccurred.emit("[Error] Not connected.")
-    #         return
-    #     self.socket.write((text + "\n").encode("utf-8"))
-    #
-    # def send_gmcp(self, package: str, payload: Optional[str] = None):
-    #     body = f"{package} {payload}" if payload else package
-    #     msg = bytes([TelnetCmd.IAC, TelnetCmd.SB, TelnetCmd.ATCP2]) + \
-    #           body.encode("utf-8") + \
-    #           bytes([TelnetCmd.IAC, TelnetCmd.SE])
-    #     self.socket.write(msg)
-    #     log.info(f"[GMCP SENT] {body}")
-
     def send(self, text: str):
         if self.socket.state() != QTcpSocket.ConnectedState:
             self.errorOccurred.emit("[Error] Not connected.")
