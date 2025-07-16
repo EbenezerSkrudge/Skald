@@ -22,7 +22,8 @@ class Context:
             "ctx":  self,
 #            "match": match,
             "echo": self.echo,
-            "send": self.send
+            "send": self.send,
+            "send_gmcp": self.send_gmcp
         }
         sandbox.update(extra_locals)
         exec(code_obj, {}, sandbox)

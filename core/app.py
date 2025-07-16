@@ -1,22 +1,30 @@
 # core/app.py
-
+import logging
 from pathlib import Path
 from typing  import Optional
 
 from PySide6.QtWidgets import QApplication
 
-from core.alias_manager    import AliasManager
-from core.connection       import MudConnection
-from core.config           import HOST, PORT
-from core.db               import init_db
-from core.settings         import load_settings
-from core.script_manager   import ScriptManager
-from core.timer_manager import TimerManager
-from core.trigger_manager  import TriggerManager
-from core.system_triggers  import register_system_triggers
+from core.alias_manager     import AliasManager
+from core.connection        import MudConnection
+from core.config            import HOST, PORT
+from core.db                import init_db
+from core.settings          import load_settings
+from core.script_manager    import ScriptManager
+from core.timer_manager     import TimerManager
+from core.trigger_manager   import TriggerManager
+from core.system_triggers   import register_system_triggers
+from core.event_bus         import bus
+
 from ui.windows.profile_manager import ProfileManager
 from ui.windows.main_window     import MainWindow
 
+logging.basicConfig(
+    level=logging.DEBUG,  # or INFO, WARNING, etc.
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+
+log = logging.getLogger(__name__)
 
 class App:
     _instance = None
@@ -53,6 +61,9 @@ class App:
         self.connection.gmcpReceived.connect(self._on_gmcp)
         self.connection.negotiation.connect(self._on_negotiation)
 
+        # Other events
+        bus.register("on_login", self._on_login)
+
     def start(self):
         # Show profile picker first
         pm = ProfileManager(self)
@@ -74,7 +85,7 @@ class App:
         self.trigger_manager = TriggerManager(self)
         self.script_manager  = ScriptManager(self, self.trigger_manager)
 
-        register_system_triggers(self.trigger_manager, self.send_to_mud)
+        register_system_triggers(self.trigger_manager)
 
         # Show main UI
         if self.main_window is None:
@@ -84,13 +95,6 @@ class App:
 
         # Connect to MUD
         self.connection.connect_to_host(HOST, PORT)
-
-    def toggle_telnet_debug(self):
-        self.debug_telnet = not self.debug_telnet
-        state = "ON" if self.debug_telnet else "OFF"
-        self.main_window.console.echo_html(
-            f"<span style='color:yellow'>Telnet debug {state}</span>"
-        )
 
     def send_to_mud(self, text: str):
         sock = self.connection.socket
@@ -108,9 +112,6 @@ class App:
     def send_gmcp(self, package: str, payload: Optional[str] = None):
         """Send GMCP package, optionally logging to console."""
         if self.connection.socket and self.connection.socket.isOpen():
-            if self.debug_telnet:
-                msg = package if payload is None else f"{package} {payload}"
-                self.main_window.console.echo(f"[CLIENT GMCP] {msg}")
             self.connection.send_gmcp(package, payload)
         else:
             self.main_window.console.echo_html(
@@ -152,8 +153,7 @@ class App:
         self.trigger_manager.check_triggers(text)
 
     def _on_gmcp(self, pkg: str, payload):
-        if self.debug_telnet:
-            self.main_window.console.echo(f"[SERVER GMCP] {pkg} = {payload}")
+        logging.info(f"[>GMCP] {pkg} = {payload}")
 
     def _on_negotiation(self, cmd_value: int, opt: int):
         from core.telnet import TelnetCmd
@@ -167,6 +167,8 @@ class App:
                         inp.setMasking(True)
                     case TelnetCmd.WONT:
                         inp.setMasking(False)
+            case TelnetCmd.ATCP2:
+                self.connection.socket.write(bytes([TelnetCmd.IAC, TelnetCmd.DO, TelnetCmd.ATCP2]))
             case _:
                 return
 
@@ -175,7 +177,7 @@ class App:
         pass
 
     def _on_error(self, msg: str):
-        self.main_window.console.echo(f"[ERROR] {msg}")
+        logging.info(f"[ERROR] {msg}")
 
     @classmethod
     def instance(cls):
@@ -183,6 +185,13 @@ class App:
             cls._instance = cls()
         return cls._instance
 
+    # ─── Incoming Data ──────────────────────────────────────────
+    def _on_login(self, *args):
+        """
+        Called once on login.  Sends every queued GMCP package.
+        """
+        for stream in ["LIB", "CVB", "MCB"]:
+            self.connection.send_gmcp(stream)
 
 def begin():
     core_app = App.instance()

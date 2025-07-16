@@ -1,8 +1,18 @@
+# core/connection.py
+
+import logging
 from typing      import Optional
 from PySide6.QtCore import QObject, Signal, Slot, QByteArray
 from PySide6.QtNetwork import QTcpSocket, QAbstractSocket
 
 from core.telnet import TelnetParser, TelnetCmd
+
+logging.basicConfig(
+    level=logging.DEBUG,  # or INFO, WARNING, etc.
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+
+log = logging.getLogger(__name__)
 
 class MudConnection(QObject):
     dataReceived  = Signal(str)
@@ -73,6 +83,7 @@ class MudConnection(QObject):
               + body.encode("utf-8") \
               + bytes([TelnetCmd.IAC, TelnetCmd.SE])
         self.socket.write(msg)
+        logging.info(f"[GMCP SENT] {msg}")
 
     # ─ Parser callbacks ─────────────────────────────────
 

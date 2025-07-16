@@ -6,6 +6,11 @@ from typing import (
     List, Tuple, Union, Optional, Callable, Literal
 )
 
+logging.basicConfig(
+    level=logging.DEBUG,  # or INFO, WARNING, etc.
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+
 log = logging.getLogger(__name__)
 
 class TelnetCmd(IntEnum):
@@ -171,6 +176,7 @@ class TelnetParser:
                 case ('neg', TelnetCmd() as cmd, int(opt)):
                     final.append(('neg', cmd, opt))
                     self.on_neg(cmd, opt)
+                    log.info(f"[NEG]: {TelnetCmd(cmd).name} {TelnetCmd(opt).name}")
 
                 case ('sb', int(opt), bytes() as payload):
                     final.append(('sb', opt, payload))
@@ -188,6 +194,7 @@ class TelnetParser:
                 case ('ga', None):
                     final.append(('ga', None))
                     self.on_ga()
+                    log.info(f"[GA]")
 
                 case _:
                     log.warning("[TELNET] Unrecognized Telnet frame: %r", frame)
