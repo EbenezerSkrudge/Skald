@@ -1,17 +1,19 @@
 # ui/windows/main_window.py
 
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QSplitter, QFrame,
-    QVBoxLayout, QHBoxLayout, QStatusBar
+    QMainWindow, QWidget, QSplitter, QFrame, QVBoxLayout,
+    QHBoxLayout, QStatusBar
 )
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui  import QIcon, QAction
 
-from ui.widgets.console.console import Console
-from ui.windows.alias_editor   import AliasEditorWindow
-from ui.windows.timer_editor import TimerEditorWindow
-from ui.windows.trigger_editor import TriggerEditorWindow
+from ui.widgets.console.console         import Console
+from ui.windows.alias_editor            import AliasEditorWindow
+from ui.windows.timer_editor            import TimerEditorWindow
+from ui.windows.trigger_editor          import TriggerEditorWindow
+from ui.widgets.mapper.mapper_widget    import MapperWidget
+
 
 
 class MainWindow(QMainWindow):
@@ -73,6 +75,15 @@ class MainWindow(QMainWindow):
         # Connect console input
         self.console.commandEntered.connect(self._handle_command)
         QTimer.singleShot(0, self.console.input.setFocus)
+
+        # Mapper widget
+        right_layout = QVBoxLayout(self.right_panel)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(0)
+
+        self.mapper = MapperWidget()
+        right_layout.addWidget(self.mapper)
+        self.mapper.render_test_room()
 
     def _create_menu(self):
         menu = self.menuBar()
