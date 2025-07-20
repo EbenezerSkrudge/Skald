@@ -4,81 +4,101 @@ from PySide6.QtWidgets import (
     QGraphicsEllipseItem,
     QGraphicsTextItem
 )
-from PySide6.QtGui import QBrush, QPen, QColor
-from PySide6.QtCore import QPointF
+from PySide6.QtGui import QBrush, QPen, QColor, QFont
+from PySide6.QtCore import QPointF, Qt
 
 from ui.widgets.mapper.constants import (
     Z_ROOM_SHAPE,
-    Z_ROOM_LABEL,
-    Z_ROOM_ICON
+    Z_ROOM_ICON,
+    GRID_SIZE,
+    ROOM_SIZE
 )
 
 class RoomItem(QGraphicsItemGroup):
-    def __init__(self, pos: QPointF, size: int, label: str, color: QColor, explored: bool = True):
+    def __init__(
+        self,
+        grid_x: int,
+        grid_y: int,
+        short_desc: str,
+        color: QColor,
+        explored: bool = True
+    ):
         super().__init__()
 
-        self.pos = pos              # Logical center
-        self.size = size
-        self.label_text = label
-        self.color = color
-        self.explored = explored
+        # grid → pixel center
+        self.grid_x     = grid_x
+        self.grid_y     = grid_y
+        self.pos        = QPointF(grid_x * GRID_SIZE,
+                                   grid_y * GRID_SIZE)
+
+        # keep the GMCP short‐desc around for the tooltip
+        self.short_desc = short_desc
+
+        # fixed diameter & style
+        self.size       = ROOM_SIZE
+        self.color      = color
+        self.explored   = explored
 
         self._build_visuals()
-        self.setZValue(Z_ROOM_SHAPE + 1)  # Ensure group is above connectors
+        self.setZValue(Z_ROOM_SHAPE + 1)
+
+        # use the short description as a hover tooltip
+        self.setToolTip(self.short_desc)
 
     def _build_visuals(self):
-        # Remove existing visuals
-        for item in self.childItems():
-            self.removeFromGroup(item)
-            item.setParentItem(None)
+        # clear out any old items
+        for child in self.childItems():
+            self.removeFromGroup(child)
+            child.setParentItem(None)
 
-        # Shape: square if explored, circle if unexplored
+        half = self.size / 2
+
+        # ---------- room shape ----------
         if self.explored:
-            shape_item = QGraphicsRectItem(
-                self.pos.x() - self.size / 2,
-                self.pos.y() - self.size / 2,
+            shape = QGraphicsRectItem(
+                self.pos.x() - half,
+                self.pos.y() - half,
                 self.size,
                 self.size
             )
-            shape_item.setBrush(QBrush(self.color))
-            shape_item.setPen(QPen(QColor("white"), 2))
+            shape.setBrush(QBrush(self.color))
         else:
-            shape_item = QGraphicsEllipseItem(
-                self.pos.x() - self.size / 2,
-                self.pos.y() - self.size / 2,
+            shape = QGraphicsEllipseItem(
+                self.pos.x() - half,
+                self.pos.y() - half,
                 self.size,
                 self.size
             )
-            shape_item.setBrush(QBrush(QColor("#555")))
-            shape_item.setPen(QPen(QColor("darkgray"), 1))
+            shape.setBrush(QBrush(QColor("#555")))
+            shape.setPen(QPen(QColor("darkgray"), 1))
 
-        shape_item.setZValue(Z_ROOM_SHAPE)
-        self.addToGroup(shape_item)
+        shape.setZValue(Z_ROOM_SHAPE)
+        self.addToGroup(shape)
 
-        # Label
-        label_item = QGraphicsTextItem(self.label_text)
-        label_item.setDefaultTextColor(QColor("white"))
-        label_item.setPos(self.pos.x() - 20, self.pos.y() + self.size / 2 + 5)
-        label_item.setZValue(Z_ROOM_LABEL)
-        self.addToGroup(label_item)
-
-        # Optional "?" icon
+        # ---------- “?” for unexplored ----------
         if not self.explored:
-            icon_item = QGraphicsTextItem("?")
-            icon_item.setDefaultTextColor(QColor("yellow"))
-            icon_item.setPos(self.pos.x() - 5, self.pos.y() - 10)
-            icon_item.setZValue(Z_ROOM_ICON)
-            self.addToGroup(icon_item)
+            icon = QGraphicsTextItem("?")
+            icon.setDefaultTextColor(QColor("yellow"))
+
+            f = icon.font()
+            f.setPointSizeF(self.size * 0.5)
+            f.setBold(True)
+            icon.setFont(f)
+
+            br = icon.boundingRect()
+            icon.setPos(
+                self.pos.x() - br.width()  / 2,
+                self.pos.y() - br.height() / 2
+            )
+            icon.setZValue(Z_ROOM_ICON)
+            self.addToGroup(icon)
 
     def center(self) -> QPointF:
-        """Returns the logical center of the room."""
-        return QPointF(self.pos.x(), self.pos.y())
+        return QPointF(self.pos)
 
     def get_color(self) -> QColor:
-        """Returns the room's logical color."""
         return self.color
 
     def set_explored(self, explored: bool):
-        """Updates the room's explored state and rebuilds visuals."""
         self.explored = explored
         self._build_visuals()

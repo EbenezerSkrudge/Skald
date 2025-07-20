@@ -1,10 +1,28 @@
+# ui/widgets/mapper/connector_item.py
+
 import math
-from PySide6.QtWidgets import QGraphicsLineItem, QGraphicsRectItem, QGraphicsTextItem, QGraphicsEllipseItem, \
-    QGraphicsItemGroup, QGraphicsPolygonItem
-from PySide6.QtGui import (
-    QPen, QBrush, QLinearGradient, QColor, QTransform, QPolygonF
+
+from PySide6.QtWidgets import (
+    QGraphicsLineItem,
+    QGraphicsRectItem,
+    QGraphicsEllipseItem,
+    QGraphicsItemGroup,
+    QGraphicsPolygonItem
 )
-from PySide6.QtCore import QRectF, Qt, QPointF
+
+from PySide6.QtGui import (
+    QPen,
+    QBrush,
+    QLinearGradient,
+    QColor,
+    QTransform,
+    QPolygonF
+)
+
+from PySide6.QtCore import (
+    QRectF,
+    QPointF
+)
 
 from ui.widgets.mapper.constants import (
     Z_CONNECTOR,
@@ -112,9 +130,9 @@ class NonCardinalDirectionTag(QGraphicsItemGroup):
         # ── Shared constants ─────────────────────────────────────
         radius           = 6   # for in/out circle
         io_arrow_length  = 7
-        ud_arrow_length  = 3
+        ud_arrow_length  = 2
         tip_offset       = 2
-        dash_length      = 2
+        dash_length      = 1
         dash_gap         = 5
         vertical_spacing = 6
 
@@ -157,7 +175,7 @@ class NonCardinalDirectionTag(QGraphicsItemGroup):
                 io.addToGroup(head)
 
             # position bottom‐right of room
-            io.setPos(cx + 28, cy + 28)
+            io.setPos(cx + 30, cy + 11)
             io.setZValue(Z_ROOM_ICON)
             self.addToGroup(io)
 
@@ -195,8 +213,7 @@ class NonCardinalDirectionTag(QGraphicsItemGroup):
                 head = self._create_arrowhead(start, end)
                 ud.addToGroup(head)
 
-            # position top‐right of room
-            ud.setPos(cx + 29, cy - 28)
+            ud.setPos(cx + 31, cy - 12)
             ud.setZValue(Z_ROOM_ICON)
             self.addToGroup(ud)
 
@@ -236,3 +253,90 @@ class NonCardinalDirectionTag(QGraphicsItemGroup):
         head.setPen(QPen(QColor("orange")))
         head.setZValue(Z_ROOM_ICON)
         return head
+
+
+class FoldedConnectorItem(QGraphicsItemGroup):
+    def __init__(
+            self,
+            origin: QPointF,
+            direction: QPointF,
+            color: QColor,
+            full_length: float,
+            tip_offset: float = 2,
+            pen_width: float = 2,
+            arrowhead_size: float = 4
+    ):
+        super().__init__()
+
+        # compute unit vector
+        dx, dy = direction.x(), direction.y()
+        dist = math.hypot(dx, dy)
+        if dist == 0:
+            return
+
+        ux, uy = dx / dist, dy / dist
+
+        # half‐length end point
+        half = full_length / 2
+        mid = QPointF(origin.x() + ux * half,
+                      origin.y() + uy * half)
+
+        # draw shaft shortened to avoid blunt overlap with head
+        short_end = self._shorten_line(origin, mid, tip_offset)
+        shaft = QGraphicsLineItem(
+            origin.x(), origin.y(),
+            short_end.x(), short_end.y()
+        )
+        shaft.setPen(QPen(color, pen_width))
+        self.addToGroup(shaft)
+
+        # draw arrowhead at true mid‐point
+        head = self._create_arrowhead(origin, mid, color, arrowhead_size)
+        self.addToGroup(head)
+
+        # place above connectors but below room icons
+        self.setZValue(Z_ROOM_SHAPE - 1)
+
+    def _shorten_line(
+            self,
+            start: QPointF,
+            end: QPointF,
+            offset: float
+    ) -> QPointF:
+        dx, dy = end.x() - start.x(), end.y() - start.y()
+        length = math.hypot(dx, dy)
+        if length == 0:
+            return end
+        ux, uy = dx / length, dy / length
+        return QPointF(end.x() - ux * offset,
+                       end.y() - uy * offset)
+
+    def _create_arrowhead(
+            self,
+            start: QPointF,
+            end: QPointF,
+            color: QColor,
+            size: float = 4
+    ) -> QGraphicsPolygonItem:
+        # direction unit vectors
+        dx, dy = end.x() - start.x(), end.y() - start.y()
+        length = math.hypot(dx, dy)
+        if length == 0:
+            return QGraphicsPolygonItem()
+
+        ux, uy = dx / length, dy / length
+        px, py = -uy, ux  # perpendicular
+
+        # tip nudged slightly forward
+        tip = QPointF(end.x() + ux * 0.5,
+                      end.y() + uy * 0.5)
+        left = QPointF(end.x() - ux * size + px * size,
+                       end.y() - uy * size + py * size)
+        right = QPointF(end.x() - ux * size - px * size,
+                        end.y() - uy * size - py * size)
+
+        poly = QPolygonF([tip, left, right])
+        arrowhead = QGraphicsPolygonItem(poly)
+        arrowhead.setBrush(QBrush(color))
+        arrowhead.setPen(QPen(color))
+        return arrowhead

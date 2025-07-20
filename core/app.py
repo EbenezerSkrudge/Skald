@@ -1,27 +1,30 @@
 # core/app.py
 
 import logging
-from pathlib import Path
-from typing import Optional
+from pathlib    import Path
+from typing     import Optional
+
+import json
 
 from PySide6.QtWidgets import QApplication
 
-from core.alias_manager import AliasManager
-from core.connection import MudConnection
-from core.config import HOST, PORT
-from core.db import init_db
-from core.settings import load_settings
-from core.script_manager import ScriptManager
-from core.signals import signals
-from core.timer_manager import TimerManager
-from core.trigger_manager import TriggerManager
-from core.system_triggers import register_system_triggers
+from core.alias_manager     import AliasManager
+from core.connection        import MudConnection
+from core.config            import HOST, PORT
+from core.db                import init_db
+from core.settings          import load_settings
+from core.script_manager    import ScriptManager
+from core.signals           import signals
+from core.timer_manager     import TimerManager
+from core.trigger_manager   import TriggerManager
+from core.system_triggers   import register_system_triggers
+from ui.keymap import KeyMapper
 
-from ui.windows.profile_manager import ProfileManager
-from ui.windows.main_window import MainWindow
+from ui.windows.profile_manager     import ProfileManager
+from ui.windows.main_window         import MainWindow
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.WARNING,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
 log = logging.getLogger(__name__)
@@ -49,10 +52,10 @@ class App:
         self.connection = MudConnection()
         self.main_window: Optional[MainWindow] = None
 
-        self.alias_manager = None
-        self.timer_manager = None
-        self.trigger_manager = None
-        self.script_manager = None
+        self.alias_manager      = None
+        self.timer_manager      = None
+        self.trigger_manager    = None
+        self.script_manager     = None
 
         self.gmcp_data = {}
 
@@ -60,6 +63,9 @@ class App:
 
         self._init_connection_events()
         signals.on_login.connect(self._on_login)
+
+        self.keymapper = KeyMapper(self)
+        self.keymapper.install()
 
     def start(self):
         pm = ProfileManager(self)
@@ -137,8 +143,27 @@ class App:
         self.trigger_manager.check_triggers(text)
 
     def _on_gmcp(self, pkg: str, payload):
-        self.gmcp_data[pkg] = payload
         log.info(f"[>GMCP] {pkg} = {payload}")
+
+        try:
+            parsed = json.loads(payload)
+        except (TypeError, ValueError):
+            # not valid JSON? just pass it through
+            parsed = payload
+
+        self.gmcp_data[pkg] = parsed
+
+        match pkg:
+            case "LID":
+                self.fire_event("on_location_update", parsed)
+
+            case "CVD":
+                # TODO: add on_vitals_update event handler
+                pass
+
+            case "MCD":
+                # TODO: add on_message_update event handler
+                pass
 
     def _on_negotiation(self, cmd_value: int, opt: int):
         from core.telnet import TelnetCmd

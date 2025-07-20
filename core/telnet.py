@@ -5,7 +5,6 @@ from enum import IntEnum
 from typing import Callable, Optional, Union, List, Tuple, Literal
 
 log = logging.getLogger(__name__)
-logging.basicConfig(level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
 class TelnetCmd(IntEnum):
     IAC   = 255

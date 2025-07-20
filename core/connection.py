@@ -10,7 +10,6 @@ from core.telnet import TelnetParser, TelnetCmd
 from collections import deque
 
 log = logging.getLogger(__name__)
-logging.basicConfig(level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
 
 class MudConnection(QObject):

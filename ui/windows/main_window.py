@@ -1,20 +1,31 @@
 # ui/windows/main_window.py
 
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QSplitter, QFrame, QVBoxLayout,
-    QHBoxLayout, QStatusBar
+    QFrame,
+    QHBoxLayout,
+    QMainWindow,
+    QSplitter,
+    QStatusBar,
+    QVBoxLayout,
+    QWidget,
 )
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui  import QIcon, QAction
+from PySide6.QtCore import (
+    Qt,
+    QTimer,
+)
+from PySide6.QtGui  import (
+    QAction,
+    QIcon,
+)
 
+from ui.keymap import KeyMapper
 from ui.widgets.console.console         import Console
+from ui.widgets.mapper.map_controller   import MapController
 from ui.windows.alias_editor            import AliasEditorWindow
 from ui.windows.timer_editor            import TimerEditorWindow
 from ui.windows.trigger_editor          import TriggerEditorWindow
 from ui.widgets.mapper.mapper_widget    import MapperWidget
-
-
 
 class MainWindow(QMainWindow):
     def __init__(self, app):
@@ -83,7 +94,8 @@ class MainWindow(QMainWindow):
 
         self.mapper = MapperWidget()
         right_layout.addWidget(self.mapper)
-        self.mapper.render_test_room()
+
+        self.app.register_event_handler("on_location_update", self.mapper.controller.on_room_info)
 
     def _create_menu(self):
         menu = self.menuBar()
