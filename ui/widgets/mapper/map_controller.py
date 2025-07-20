@@ -1,6 +1,9 @@
 # ui/widgets/mapper/map_controller.py
 
 import math
+
+import networkx as nx
+
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QColor
 
@@ -40,6 +43,8 @@ class MapController(QObject):
         self._prev_info = None
         self._marker = None
         self._last_vertical = None
+
+        self.graph = nx.Graph()
 
     def on_room_info(self, info: dict):
         room_hash = info.get("hash")
@@ -129,6 +134,8 @@ class MapController(QObject):
         self._rooms[room_hash] = (gx, gy, room)
         self.map.scene().addItem(room)
 
+        self.graph.add_node(room_hash, pos=(gx, gy), desc=desc, explored=explored)
+
     def _draw_connector(self, hash1: str, hash2: str):
         edge = frozenset((hash1, hash2))
         if edge in self._drawn_edges:
@@ -142,6 +149,8 @@ class MapController(QObject):
             conn.add_to_scene(self.map.scene())
         else:
             self.map.scene().addItem(conn)
+
+        self.graph.add_edge(hash1, hash2)
 
     def _preplace_and_connect(self, links: dict, origin_hash: str, gx: int, gy: int):
         for dir_text, dest_hash in links.items():
