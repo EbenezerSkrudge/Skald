@@ -152,6 +152,9 @@ class MapController(QObject):
         )
 
     def _draw_connector(self, hash1: str, hash2: str):
+        if hash1 not in self._rooms or hash2 not in self._rooms:
+            return  # Prevents KeyError if either room isn't placed yet
+
         edge = frozenset((hash1, hash2))
         if edge in self._drawn_edges:
             return
