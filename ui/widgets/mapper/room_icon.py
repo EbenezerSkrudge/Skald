@@ -91,3 +91,6 @@ class RoomIcon(QGraphicsItemGroup):
         ):
             self._build_visuals()
         return super().itemChange(change, value)
+
+    def refresh(self):
+        self._build_visuals()

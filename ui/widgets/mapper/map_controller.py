@@ -1,51 +1,48 @@
 # ui/widgets/mapper/map_controller.py
 
-import networkx as nx
 from PySide6.QtCore import QObject, Signal
-from PySide6.QtGui import QColor
-
-from ui.widgets.mapper.room_item import RoomItem
-from ui.widgets.mapper.connector_item import ConnectorItem, NonCardinalDirectionTag
+from ui.widgets.mapper.connector_item import ConnectorItem
 from ui.widgets.mapper.location_widget import LocationWidget
-from ui.widgets.mapper.constants import GRID_SIZE
-from game.terrain import TERRAIN_TYPES
+from ui.widgets.mapper.map_graph import MapGraph
+from ui.widgets.mapper.room import Room
 
 
 class MapController(QObject):
     """
-    Call `on_room_info(info: dict)` for each GMCP.Room.Info dict.
+    Call on_room_info(info: dict) for each GMCP.Room.Info dict.
     Places and connects rooms, manages marker movement, and keeps the view centered.
     """
     mapUpdated = Signal()
 
+    # Direction name → numeric keypad code
     _TXT_TO_NUM = {
         "northwest": 7, "north": 8, "northeast": 9,
         "west": 4,                  "east": 6,
         "southwest": 1, "south": 2, "southeast": 3,
     }
 
+    # Numeric keypad code → (dx, dy)
     _NUM_TO_DELTA = {
-        1: (-1, +1), 2: (0, +1), 3: (+1, +1),
+        1: (-1, +1), 2: (0, +1),  3: (+1, +1),
         4: (-1,  0),             6: (+1,  0),
-        7: (-1, -1), 8: (0, -1), 9: (+1, -1),
+        7: (-1, -1), 8: (0, -1),  9: (+1, -1),
     }
 
     def __init__(self, mapper_widget):
         super().__init__()
         self.map = mapper_widget
-        self._rooms = {}        # room_hash -> (gx, gy, RoomItem)
-        self._connectors = {}   # frozenset((h1, h2)) -> ConnectorItem
-        self._occupied = set()  # set of (gx, gy)
-        self._drawn_edges = set()
-        self._cur_hash = None
-        self._prev_info = None
-        self._marker = None
-        self._last_vertical = None
-        self.graph = nx.Graph()
+
+        self.graph = MapGraph()
+        self._connectors = {}      # frozenset((h1,h2)) -> ConnectorItem
+        self._drawn_edges = set()  # set of frozenset((h1,h2))
+        self._marker = None        # LocationWidget
+        self._cur_hash = None      # current room hash
+        self._prev_info = None     # last GMCP.Room.Info dict
 
     def on_room_info(self, info: dict):
         room_hash = info.get("hash")
         if not room_hash or room_hash == "0":
+            # no valid room—just reset marker direction
             if self._marker:
                 self._marker.update_direction(None)
             self._prev_info = info
@@ -53,71 +50,137 @@ class MapController(QObject):
 
         links   = info.get("links", {})
         desc    = info.get("short", "no description")
-        terrain = info.get("type")
-        area    = info.get("area", "unknown")  # Supplied via GMCP or spoofed upstream
+        terrain = info.get("type", "unknown")
 
-        # First room ever
+        # 1) First room ever: place root at (0,0)
         if self._cur_hash is None:
-            self._place_room(room_hash, 0, 0, desc, terrain, area=area, explored=True)
+            root = Room(info, 0, 0)
+            self.graph.add_room(root)
+            self.map.scene().addItem(root.render())
+
             self._marker = LocationWidget(0, 0, None)
             self.map.scene().addItem(self._marker)
-            self._preplace_and_connect(links, room_hash, 0, 0)
-            self._cur_hash, self._prev_info = room_hash, info
+
+            self._preplace_and_connect(root)
+            self._cur_hash, self._prev_info = root.hash, info
+
+            self._update_layout_and_marker()
             self.mapUpdated.emit()
             return
 
-        # Determine if this is a movement into a linked room
+        # 2) Movement? find direction from previous room
         prev_links = self._prev_info.get("links", {})
-        move_txt   = next((d for d, dest in prev_links.items() if dest == room_hash), None)
-
-        if not move_txt:
-            self._marker.update_direction(None)
+        move_dir   = next(
+            (d for d, dest in prev_links.items() if dest == room_hash),
+            None
+        )
+        if not move_dir:
+            if self._marker:
+                self._marker.update_direction(None)
             self._cur_hash, self._prev_info = room_hash, info
             return
 
-        base_dir, vertical = self._split_suffix(move_txt)
+        base_dir, vert = self._split_suffix(move_dir)
         num_code = self._TXT_TO_NUM.get(base_dir)
         delta    = self._NUM_TO_DELTA.get(num_code)
-
         if not delta:
             self._marker.update_direction(None)
             self._cur_hash, self._prev_info = room_hash, info
             return
-
-        self._last_vertical = vertical
         dx, dy = delta
-        ox, oy, _ = self._rooms[self._cur_hash]
-        nx, ny = ox + dx, oy + dy
 
-        # If room preplaced as unexplored, now we explore it
-        if room_hash in self._rooms:
-            _, _, room = self._rooms[room_hash]
-            if not room.explored:
-                color = QColor(TERRAIN_TYPES.get(terrain, ("unknown", "#888"))[1])
-                room.color = color
-                room.label_text = desc
-                room.set_explored(True)
-                room.setToolTip(desc)
-                # Update graph area from fresh GMCP info
-                self.graph.nodes[room_hash]["area"] = area
-                # Refresh label/filter if it's the current room
-                if room_hash == self._cur_hash:
-                    self.mapUpdated.emit()
+        # 3) Discover or update the destination room
+        if not self.graph.has_room(room_hash):
+            candidate = Room(info, 0, 0)
+            self.graph.add_room(candidate)
+            self.map.scene().addItem(candidate.render())
         else:
-            # Brand-new room discovered via movement
-            self._place_room(room_hash, nx, ny, desc, terrain, area=area, explored=True)
+            candidate = self.graph.get_room(room_hash)
+            candidate.update_from_gmcp(info)
 
-        # Connect, move marker, re-center
-        self._draw_connector(self._cur_hash, room_hash)
-        self._marker.update_position(nx, ny)
-        self._marker.update_direction(num_code)
+        # 4) Connect in graph (connector drawn later)
+        self.graph.connect_rooms(self._cur_hash, room_hash)
 
-        self.map.ensure_padding()
-        self.map.center_on_grid(nx, ny)
-        self._preplace_and_connect(links, room_hash, nx, ny)
+        # 5) Preplace neighbors (unexplored only)
+        current_room = self.graph.get_room(room_hash)
+        self._preplace_and_connect(current_room)
 
+        # 6) Update state, layout, marker
         self._cur_hash, self._prev_info = room_hash, info
+        self._update_layout_and_marker(num_code)
         self.mapUpdated.emit()
+
+    def _preplace_and_connect(self, room: Room):
+        """
+        For each exit in room.links, preplace an 'unexplored' Room
+        and connect it in the graph.
+        """
+        for dir_txt, dest_hash in room.links.items():
+            if not dest_hash:
+                continue
+
+            base_dir, _ = self._split_suffix(dir_txt)
+            num_code = self._TXT_TO_NUM.get(base_dir)
+            if not self._NUM_TO_DELTA.get(num_code):
+                continue
+
+            if not self.graph.has_room(dest_hash):
+                info_unexp = {
+                    "hash":  dest_hash,
+                    "short": "?",
+                    "type":  "unexplored",
+                    "area":  room.area,
+                    "links": {}
+                }
+                shunt = Room(info_unexp, 0, 0)
+                self.graph.add_room(shunt)
+                self.map.scene().addItem(shunt.render())
+
+            self.graph.connect_rooms(room.hash, dest_hash)
+            # connector drawing deferred to layout step
+
+    def _update_layout_and_marker(self, num_code: int | None = None):
+        """
+        Run overlap‐safe layout, reposition all rooms & marker,
+        then draw/refresh all connectors, recenter view.
+        """
+        # 1) layout
+        positions = self.graph.layout_from_root(self._cur_hash)
+        for room_hash, (gx, gy) in positions.items():
+            room = self.graph.get_room(room_hash)
+            room.grid_x, room.grid_y = gx, gy
+            room.icon.setPos(room.position)
+
+        # 2) marker
+        current = self.graph.get_room(self._cur_hash)
+        self._marker.update_position(current.grid_x, current.grid_y)
+        if num_code is not None:
+            self._marker.update_direction(num_code)
+
+        # 3) draw any new connectors now that rooms are placed
+        for h1, h2 in self.graph.edges():
+            edge = frozenset((h1, h2))
+            if edge in self._drawn_edges:
+                continue
+            self._drawn_edges.add(edge)
+
+            conn = ConnectorItem(
+                self.graph.get_room(h1),
+                self.graph.get_room(h2)
+            )
+            if hasattr(conn, "add_to_scene"):
+                conn.add_to_scene(self.map.scene())
+            else:
+                self.map.scene().addItem(conn)
+            self._connectors[edge] = conn
+
+        # 4) refresh all connectors so they follow moved rooms
+        for conn in self._connectors.values():
+            conn.refresh()
+
+        # 5) pad & center
+        self.map.ensure_padding()
+        self.map.center_on_grid(current.grid_x, current.grid_y)
 
     def _split_suffix(self, dir_text: str) -> tuple[str, str | None]:
         txt = dir_text.lower()
@@ -126,94 +189,3 @@ class MapController(QObject):
         if txt.endswith("down"):
             return txt[:-4], "down"
         return txt, None
-
-    def _place_room(self, room_hash: str, gx: int, gy: int,
-                    desc: str, terrain: str, area: str, explored: bool):
-        if (gx, gy) in self._occupied:
-            origin = self._rooms[self._cur_hash][2]
-            self.map.scene().addItem(NonCardinalDirectionTag(origin, []))
-            return
-
-        color_hex = TERRAIN_TYPES.get(terrain, ("unknown", "#888"))[1]
-        color     = QColor(color_hex)
-
-        room = RoomItem(gx, gy, desc, color, explored)
-        self._occupied.add((gx, gy))
-        self._rooms[room_hash] = (gx, gy, room)
-        self.map.scene().addItem(room)
-
-        self.graph.add_node(
-            room_hash,
-            pos=(gx, gy),
-            desc=desc,
-            explored=explored,
-            terrain=terrain,
-            area=area,
-        )
-
-    def _draw_connector(self, hash1: str, hash2: str):
-        if hash1 not in self._rooms or hash2 not in self._rooms:
-            return  # Prevents KeyError if either room isn't placed yet
-
-        edge = frozenset((hash1, hash2))
-        if edge in self._drawn_edges:
-            return
-
-        self._drawn_edges.add(edge)
-        room1, room2 = self._rooms[hash1][2], self._rooms[hash2][2]
-        conn = ConnectorItem(room1, room2)
-
-        if hasattr(conn, "add_to_scene"):
-            conn.add_to_scene(self.map.scene())
-        else:
-            self.map.scene().addItem(conn)
-
-        self.graph.add_edge(hash1, hash2)
-        self._connectors[edge] = conn
-
-    def _preplace_and_connect(self, links: dict, origin_hash: str, gx: int, gy: int):
-        for dir_text, dest_hash in links.items():
-            if not dest_hash:
-                continue
-
-            base_dir = self._split_suffix(dir_text)[0]
-            num_code = self._TXT_TO_NUM.get(base_dir)
-            delta    = self._NUM_TO_DELTA.get(num_code)
-            if not delta:
-                continue
-
-            dx, dy = delta
-            nx, ny = gx + dx, gy + dy
-
-            if dest_hash not in self._rooms:
-                # Preplace unexplored with no area until explored
-                self._place_room(dest_hash, nx, ny, "unexplored", None, area="unknown", explored=False)
-
-            self._draw_connector(origin_hash, dest_hash)
-
-    def find_room_hash(self, room_item):
-        for h, (_, _, item) in self._rooms.items():
-            if item is room_item:
-                return h
-        return None
-
-    def set_room_area(self, room_hash, new_area):
-        if room_hash in self.graph.nodes:
-            self.graph.nodes[room_hash]["area"] = new_area
-            self.mapUpdated.emit()
-
-    def delete_room(self, room_hash):
-        if room_hash not in self._rooms:
-            return
-
-        gx, gy, item = self._rooms.pop(room_hash)
-        self._occupied.discard((gx, gy))
-        self.map.scene().removeItem(item)
-        self.graph.remove_node(room_hash)
-
-        edges_to_remove = [e for e in self._drawn_edges if room_hash in e]
-        for edge in edges_to_remove:
-            self._drawn_edges.remove(edge)
-            conn = self._connectors.pop(edge, None)
-            if conn:
-                self.map.scene().removeItem(conn)

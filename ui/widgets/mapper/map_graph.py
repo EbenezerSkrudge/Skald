@@ -4,12 +4,21 @@ import collections
 import networkx as nx
 from ui.widgets.mapper.room import Room
 
-# Direction → (dx, dy)
+# Direction → (dx, dy) for *base* directions only
 _TXT_TO_DELTA = {
-    "northwest": (-1, -1), "north": ( 0, -1), "northeast": ( 1, -1),
-    "west":      (-1,  0),                         "east": ( 1,  0),
-    "southwest": (-1,  1), "south": ( 0,  1), "southeast": ( 1,  1),
+    "northwest": (-1, -1), "north": (0, -1), "northeast": (1, -1),
+    "west":      (-1,  0),                   "east":      (1,  0),
+    "southwest": (-1,  1), "south":   (0,  1), "southeast": (1,  1),
 }
+
+
+def _strip_vertical_suffix(dir_text: str) -> str:
+    txt = dir_text.lower()
+    if txt.endswith("up"):
+        return txt[:-2]
+    if txt.endswith("down"):
+        return txt[:-4]
+    return txt
 
 
 class MapGraph(nx.Graph):
@@ -17,13 +26,7 @@ class MapGraph(nx.Graph):
     A graph of Room instances.  Nodes are room.hash keys, with 'room' attribute.
     """
 
-    def __init__(self):
-        super().__init__()
-
     def add_room(self, room: Room):
-        """
-        Insert a Room into the graph.  If the hash already exists, updates its data.
-        """
         self.add_node(room.hash, room=room)
         room.graph_ref = self
 
@@ -34,23 +37,15 @@ class MapGraph(nx.Graph):
         data = self.nodes.get(room_hash)
         return data["room"] if data else None
 
-    def remove_room(self, room_hash: str):
-        if room_hash in self.nodes:
-            self.remove_node(room_hash)
-
     def connect_rooms(self, src_hash: str, dst_hash: str):
-        """
-        Create an undirected edge between two rooms.
-        """
         if src_hash in self.nodes and dst_hash in self.nodes:
             self.add_edge(src_hash, dst_hash)
 
     def layout_from_root(self, root_hash: str) -> dict[str, tuple[int, int]]:
         """
-        Breadth-first layout from root_hash:
-        - Stops on overlap (distinct rooms wanting same coords)
-        - Assigns grid_x, grid_y on each Room
-        Returns a map of room_hash -> (grid_x, grid_y)
+        Flood‐fill from root_hash, stripping any 'up'/'down' suffix so that
+        e.g. 'northup' behaves like 'north'.  Stops on overlap and assigns
+        grid coords on each Room.
         """
         if root_hash not in self.nodes:
             return {}
@@ -60,43 +55,39 @@ class MapGraph(nx.Graph):
         queue = collections.deque([root_hash])
 
         while queue:
-            current = queue.popleft()
-            cx, cy = positions[current]
-            room: Room = self.nodes[current]["room"]
-
-            # Set the Room’s coordinates
+            cur_hash = queue.popleft()
+            cx, cy = positions[cur_hash]
+            room = self.get_room(cur_hash)
             room.grid_x, room.grid_y = cx, cy
 
-            # Traverse each exit link
             for dir_txt, neigh_hash in room.links.items():
                 if neigh_hash not in self.nodes:
                     continue
 
-                # Already positioned?
-                if neigh_hash in positions:
-                    # If it maps to a different coord, that’s a boundary; skip
-                    nx_, ny_ = positions[neigh_hash]
-                    dx_, dy_ = _TXT_TO_DELTA.get(dir_txt, (0, 0))
-                    if (cx + dx_, cy + dy_) != (nx_, ny_):
-                        continue
-                    # otherwise it’s the same room revisiting—ignore
-                    continue
-
-                delta = _TXT_TO_DELTA.get(dir_txt)
+                # Strip vertical suffix before lookup
+                base_dir = _strip_vertical_suffix(dir_txt)
+                delta = _TXT_TO_DELTA.get(base_dir)
                 if not delta:
                     continue
                 dx, dy = delta
-                nx_, ny_ = cx + dx, cy + dy
 
-                # Overlap check: if a *different* room already owns that coord
-                owner = coord_owner.get((nx_, ny_))
+                # Already positioned?
+                if neigh_hash in positions:
+                    nx_, ny_ = positions[neigh_hash]
+                    # If coords don't match expected—treat as boundary
+                    if (cx + dx, cy + dy) != (nx_, ny_):
+                        continue
+                    else:
+                        continue
+
+                # Overlap check
+                target = (cx + dx, cy + dy)
+                owner = coord_owner.get(target)
                 if owner and owner != neigh_hash:
-                    # Hit the boundary—don't traverse beyond
                     continue
 
-                # Accept placement
-                positions[neigh_hash] = (nx_, ny_)
-                coord_owner[(nx_, ny_)] = neigh_hash
+                positions[neigh_hash] = target
+                coord_owner[target] = neigh_hash
                 queue.append(neigh_hash)
 
         return positions

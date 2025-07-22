@@ -6,7 +6,6 @@ from PySide6.QtCore import QPointF, Qt
 
 from ui.widgets.mapper.constants import GRID_SIZE
 from ui.widgets.mapper.map_controller import MapController
-from ui.widgets.mapper.room_item import RoomItem
 
 
 class MapperWidget(QGraphicsView):
@@ -24,12 +23,13 @@ class MapperWidget(QGraphicsView):
         self.setBackgroundBrush(Qt.black)
 
         self._zoom = 0
+        self._shift_held = False
 
         # —– Controller hookup —–
         self.controller = MapController(self)
         self._scene.controller = self.controller
 
-        # Whenever the map changes (new room, move, area-edit, delete), update label & filter
+        # Whenever the map changes, update label & filter
         self.controller.mapUpdated.connect(self._update_area_label)
         self.controller.mapUpdated.connect(self._filter_view_by_area)
 
@@ -45,7 +45,7 @@ class MapperWidget(QGraphicsView):
     def _update_area_label(self):
         cur = self.controller._cur_hash
         if cur and cur in self.controller.graph.nodes:
-            area = self.controller.graph.nodes[cur].get("area", "")
+            area = self.controller.graph.nodes[cur]["room"].area
             self.area_label.setText(f"Area: {area}")
         else:
             self.area_label.setText("")
@@ -56,19 +56,20 @@ class MapperWidget(QGraphicsView):
         if not cur or cur not in self.controller.graph.nodes:
             return
 
-        current_area = self.controller.graph.nodes[cur].get("area")
+        current_area = self.controller.graph.nodes[cur]["room"].area
 
-        # 1) Rooms
-        for room_hash, (_, _, room_item) in self.controller._rooms.items():
-            room_area = self.controller.graph.nodes[room_hash].get("area")
-            room_item.setVisible(room_area == current_area)
+        # Rooms
+        for _, data in self.controller.graph.nodes(data=True):
+            room_obj = data["room"]
+            room_obj.icon.setVisible(room_obj.area == current_area)
 
-        # 2) Connectors
-        for edge, conn_item in self.controller._connectors.items():
-            h1, h2 = tuple(edge)
-            a1 = self.controller.graph.nodes[h1].get("area")
-            a2 = self.controller.graph.nodes[h2].get("area")
-            conn_item.setVisible(a1 == current_area and a2 == current_area)
+        # Connectors
+        for (h1, h2), conn_item in self.controller._connectors.items():
+            r1 = self.controller.graph.get_room(h1)
+            r2 = self.controller.graph.get_room(h2)
+            conn_item.setVisible(
+                r1.area == current_area and r2.area == current_area
+            )
 
     def wheelEvent(self, event):
         factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
@@ -93,17 +94,29 @@ class MapperWidget(QGraphicsView):
     def bulk_set_area(self):
         selected = [
             item for item in self.scene().selectedItems()
-            if isinstance(item, RoomItem)
+            if type(item).__name__ == "RoomIcon"
         ]
         if not selected:
             return
 
-        text, ok = QInputDialog.getText(self, "Set Area", f"Assign area to {len(selected)} selected rooms:")
-        if ok and text.strip():
-            for item in selected:
-                hash_id = self.controller.find_room_hash(item)
-                if hash_id:
-                    self.controller.set_room_area(hash_id, text.strip())
+        text, ok = QInputDialog.getText(
+            self,
+            "Set Area",
+            f"Assign area to {len(selected)} selected rooms:"
+        )
+        if not ok or not text.strip():
+            return
+        new_area = text.strip()
+
+        # Update each Room instance by matching its icon
+        for icon in selected:
+            for room_hash, data in self.controller.graph.nodes(data=True):
+                if data["room"].icon is icon:
+                    data["room"].area = new_area
+                    break
+
+        # Reapply label & filtering
+        self.controller.mapUpdated.emit()
 
     def _set_drag_mode(self):
         if self._shift_held:
@@ -122,4 +135,3 @@ class MapperWidget(QGraphicsView):
             self._shift_held = False
             self._set_drag_mode()
         super().keyReleaseEvent(event)
-
