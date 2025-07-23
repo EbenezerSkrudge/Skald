@@ -8,4 +8,4 @@ Z_ROOM_ICON     =  3
 Z_OVERLAY       =  4
 
 ROOM_SIZE       = 40
-GRID_SIZE       = 40
+GRID_SIZE       = 60

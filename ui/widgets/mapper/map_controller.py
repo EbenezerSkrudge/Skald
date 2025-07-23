@@ -155,7 +155,7 @@ class MapController(QObject):
             room.icon = icon
 
             # RoomIcon.pos is precomputed in its ctor
-            icon.setPos(icon.pos)
+            #icon.setPos(icon.pos)
             scene.addItem(icon)
             self._local_icons[room_hash] = icon
 

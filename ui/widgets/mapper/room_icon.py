@@ -21,75 +21,62 @@ class RoomIcon(QGraphicsItemGroup):
         super().__init__()
         self.grid_x = grid_x
         self.grid_y = grid_y
-        self.pos = QPointF(grid_x * GRID_SIZE, grid_y * GRID_SIZE)
-        self.short_desc = short_desc
-        self.terrain = terrain
         self.size = ROOM_SIZE
+        self.terrain = terrain
 
+        # Tooltip & selection flags
         self.setToolTip(short_desc)
         self.setZValue(Z_ROOM_SHAPE + 1)
         self.setAcceptedMouseButtons(Qt.RightButton)
         self.setFlag(QGraphicsItem.ItemIsSelectable, True)
 
-        self._build_visuals()
-
-    def _build_visuals(self):
-        for child in self.childItems():
-            self.removeFromGroup(child)
-            child.setParentItem(None)
-
         half = self.size / 2
-        x, y = self.pos.x() - half, self.pos.y() - half
-        terrain_color = TERRAIN_TYPES.get(self.terrain, ("unknown", "#555"))[1]
-        color = QColor(terrain_color)
+        color = QColor(TERRAIN_TYPES.get(terrain, ("?", "#555"))[1])
 
-        if self.terrain == "unexplored":
-            shape = QGraphicsEllipseItem(x, y, self.size, self.size)
-            shape.setBrush(QBrush(color))
-            shape.setPen(QPen(QColor("darkgray"), 1))
-            shape.setZValue(Z_ROOM_SHAPE)
-            self.addToGroup(shape)
+        # 1) Terrain shape (centered at 0,0)
+        if terrain == "unexplored":
+            self._bg_item = QGraphicsEllipseItem(-half, -half, self.size, self.size)
+            self._bg_item.setPen(QPen(Qt.darkGray, 1))
+        else:
+            self._bg_item = QGraphicsRectItem(-half, -half, self.size, self.size)
+        self._bg_item.setBrush(QBrush(color))
+        self._bg_item.setZValue(Z_ROOM_SHAPE)
+        self.addToGroup(self._bg_item)
 
-            icon = QGraphicsTextItem("?")
-            font = icon.font()
+        # 2) “?” label for unexplored
+        if terrain == "unexplored":
+            txt = QGraphicsTextItem("?")
+            font = txt.font()
             font.setPointSizeF(self.size * 0.5)
             font.setBold(True)
-            icon.setFont(font)
-            icon.setDefaultTextColor(QColor("gray"))
+            txt.setFont(font)
+            txt.setDefaultTextColor(Qt.gray)
+            br = txt.boundingRect()
+            txt.setPos(-br.width() / 2, -br.height() / 2)
+            txt.setZValue(Z_ROOM_ICON)
+            self.addToGroup(txt)
 
-            br = icon.boundingRect()
-            icon.setPos(self.pos.x() - br.width() / 2, self.pos.y() - br.height() / 2)
-            icon.setZValue(Z_ROOM_ICON)
-            self.addToGroup(icon)
-        else:
-            shape = QGraphicsRectItem(x, y, self.size, self.size)
-            shape.setBrush(QBrush(color))
-            shape.setZValue(Z_ROOM_SHAPE)
-            self.addToGroup(shape)
+        # 3) Selection overlay, hidden by default
+        pad = 2
+        Overlay = QGraphicsEllipseItem if terrain == "unexplored" else QGraphicsRectItem
+        overlay = Overlay(
+            -half - pad,
+            -half - pad,
+            self.size + pad * 2,
+            self.size + pad * 2
+        )
+        overlay.setPen(QPen(Qt.cyan, 2))
+        overlay.setBrush(QBrush(QColor(0, 255, 255, 60)))
+        overlay.setZValue(Z_ROOM_ICON + 1)
+        overlay.setVisible(False)
+        self.overlay = overlay
+        self.addToGroup(overlay)
 
-        # Selection overlay if selected
-        if self.isSelected():
-            pad = 2
-            overlay_shape = (
-                QGraphicsEllipseItem if self.terrain == "unexplored"
-                else QGraphicsRectItem
-            )
-            border = overlay_shape(x - pad, y - pad, self.size + pad * 2, self.size + pad * 2)
-            border.setPen(QPen(QColor("cyan"), 2))
-            border.setBrush(QBrush(QColor(0, 255, 255, 60)))
-            border.setZValue(Z_ROOM_ICON + 1)
-            self.addToGroup(border)
-
-    def center(self) -> QPointF:
-        return self.pos
+        # 4) Place the entire group into the scene exactly once
+        self.setPos(QPointF(grid_x * GRID_SIZE, grid_y * GRID_SIZE))
 
     def itemChange(self, change, value):
-        if change in (
-            QGraphicsItem.ItemSelectedChange,
-            QGraphicsItem.ItemSelectedHasChanged
-        ):
-            self._build_visuals()
+        # Only after the selection state has actually changed
+        if change == QGraphicsItem.ItemSelectedHasChanged:
+            self.overlay.setVisible(bool(value))
         return super().itemChange(change, value)
-
-    def refresh(self):
-        self._build_visuals()
