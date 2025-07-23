@@ -9,6 +9,11 @@ from ui.widgets.mapper.map_controller import MapController
 
 
 class MapperWidget(QGraphicsView):
+    """
+    Displays the local submap (icons + connectors) managed by MapController.
+    No longer filters a global map by area; instead, MapController builds
+    and renders only the local subgraph on each update.
+    """
     def __init__(self, parent=None):
         super().__init__(parent)
 
@@ -29,54 +34,13 @@ class MapperWidget(QGraphicsView):
         self.controller = MapController(self)
         self._scene.controller = self.controller
 
-        # Whenever the map changes, update label & filter
-        self.controller.mapUpdated.connect(self._update_area_label)
-        self.controller.mapUpdated.connect(self._filter_view_by_area)
-
-        # —– Area label —–
-        self.area_label = QLabel("", self)
-        self.area_label.setStyleSheet(
-            "color: white; background-color: rgba(0, 0, 0, 128); padding: 2px;"
-        )
-        self.area_label.move(10, 10)
-        self.area_label.raise_()
-        self.area_label.setMinimumWidth(100)
-
-    def _update_area_label(self):
-        cur = self.controller._cur_hash
-        if cur and cur in self.controller.graph.nodes:
-            area = self.controller.graph.nodes[cur]["room"].area
-            self.area_label.setText(f"Area: {area}")
-        else:
-            self.area_label.setText("")
-
-    def _filter_view_by_area(self):
-        # Only rooms/connectors in the current area remain visible
-        cur = self.controller._cur_hash
-        if not cur or cur not in self.controller.graph.nodes:
-            return
-
-        current_area = self.controller.graph.nodes[cur]["room"].area
-
-        # Rooms
-        for _, data in self.controller.graph.nodes(data=True):
-            room_obj = data["room"]
-            room_obj.icon.setVisible(room_obj.area == current_area)
-
-        # Connectors
-        for (h1, h2), conn_item in self.controller._connectors.items():
-            r1 = self.controller.graph.get_room(h1)
-            r2 = self.controller.graph.get_room(h2)
-            conn_item.setVisible(
-                r1.area == current_area and r2.area == current_area
-            )
-
     def wheelEvent(self, event):
         factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
         self._zoom += 1 if factor > 1 else -1
         self.scale(factor, factor)
 
     def center_on_grid(self, gx: int, gy: int):
+        # Center the view on a grid coordinate
         self.centerOn(QPointF(gx * GRID_SIZE, gy * GRID_SIZE))
 
     def center_on_item(self, item):
@@ -92,6 +56,7 @@ class MapperWidget(QGraphicsView):
         scene.setSceneRect(rect.adjusted(-half_w, -half_h, half_w, half_h))
 
     def bulk_set_area(self):
+        # Allows assigning a new area name to one or more selected rooms
         selected = [
             item for item in self.scene().selectedItems()
             if type(item).__name__ == "RoomIcon"
@@ -108,14 +73,14 @@ class MapperWidget(QGraphicsView):
             return
         new_area = text.strip()
 
-        # Update each Room instance by matching its icon
+        # Update each Room's area via the global graph
         for icon in selected:
-            for room_hash, data in self.controller.graph.nodes(data=True):
+            for room_hash, data in self.controller.global_graph.nodes(data=True):
                 if data["room"].icon is icon:
                     data["room"].area = new_area
                     break
 
-        # Reapply label & filtering
+        # Rebuild/redraw local submap and update label
         self.controller.mapUpdated.emit()
 
     def _set_drag_mode(self):

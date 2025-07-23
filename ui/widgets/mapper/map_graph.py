@@ -6,9 +6,9 @@ from ui.widgets.mapper.room import Room
 
 # Direction → (dx, dy) for *base* directions only
 _TXT_TO_DELTA = {
-    "northwest": (-1, -1), "north": (0, -1), "northeast": (1, -1),
-    "west":      (-1,  0),                   "east":      (1,  0),
-    "southwest": (-1,  1), "south":   (0,  1), "southeast": (1,  1),
+    "northwest": (-1, -1), "north": ( 0, -1), "northeast": ( 1, -1),
+    "west":      (-1,  0),                         "east": ( 1,  0),
+    "southwest": (-1,  1), "south": ( 0,  1), "southeast": ( 1,  1),
 }
 
 
@@ -23,12 +23,51 @@ def _strip_vertical_suffix(dir_text: str) -> str:
 
 class MapGraph(nx.Graph):
     """
-    A graph of Room instances.  Nodes are room.hash keys, with 'room' attribute.
+    A graph of Room instances.  Nodes are keyed by room.hash,
+    stored in node attribute 'room'.
     """
 
     def add_room(self, room: Room):
-        self.add_node(room.hash, room=room)
-        room.graph_ref = self
+        """
+        Insert a Room instance into the graph, if it doesn't already exist.
+        """
+        key = room.hash
+        if not key:
+            return
+        if key not in self.nodes:
+            self.add_node(key, room=room)
+            room.graph_ref = self
+
+    def add_or_update_room(self, info: dict):
+        """
+        Creates or updates a Room node from GMCP info, then
+        stubs out placeholders for any linked-but-unseen rooms
+        and connects them bidirectionally.
+        """
+        room_hash = info.get("hash")
+        if not room_hash:
+            return
+
+        # 1) Create or update the primary room
+        if room_hash in self.nodes:
+            room = self.nodes[room_hash]["room"]
+            room.desc    = info.get("short", room.desc)
+            room.terrain = info.get("type", room.terrain)
+            room.links   = info.get("links", room.links)
+        else:
+            room = Room(info)
+            self.add_room(room)
+
+        # 2) Ensure stubs for every linked room
+        for dest_hash in room.links.values():
+            if not dest_hash:
+                continue
+            if dest_hash not in self.nodes:
+                stub = Room({"hash": dest_hash})
+                self.add_room(stub)
+
+            # 3) Connect them
+            self.add_edge(room_hash, dest_hash)
 
     def has_room(self, room_hash: str) -> bool:
         return room_hash in self.nodes
@@ -38,14 +77,17 @@ class MapGraph(nx.Graph):
         return data["room"] if data else None
 
     def connect_rooms(self, src_hash: str, dst_hash: str):
+        """
+        Convenience: add an edge if both nodes exist.
+        """
         if src_hash in self.nodes and dst_hash in self.nodes:
             self.add_edge(src_hash, dst_hash)
 
     def layout_from_root(self, root_hash: str) -> dict[str, tuple[int, int]]:
         """
-        Flood‐fill from root_hash, stripping any 'up'/'down' suffix so that
-        e.g. 'northup' behaves like 'north'.  Stops on overlap and assigns
-        grid coords on each Room.
+        Flood-fill from root_hash, mapping each room to a (grid_x, grid_y)
+        coordinate by following links.  Strips "up"/"down" suffix for placement.
+        Stops traversing when a placement would overlap an existing room.
         """
         if root_hash not in self.nodes:
             return {}
@@ -55,27 +97,25 @@ class MapGraph(nx.Graph):
         queue = collections.deque([root_hash])
 
         while queue:
-            cur_hash = queue.popleft()
-            cx, cy = positions[cur_hash]
-            room = self.get_room(cur_hash)
+            cur = queue.popleft()
+            cx, cy = positions[cur]
+            room = self.get_room(cur)
             room.grid_x, room.grid_y = cx, cy
 
-            for dir_txt, neigh_hash in room.links.items():
-                if neigh_hash not in self.nodes:
+            for dir_txt, neigh in room.links.items():
+                if not neigh or neigh not in self.nodes:
                     continue
 
-                # Strip vertical suffix before lookup
-                base_dir = _strip_vertical_suffix(dir_txt)
-                delta = _TXT_TO_DELTA.get(base_dir)
+                base = _strip_vertical_suffix(dir_txt)
+                delta = _TXT_TO_DELTA.get(base)
                 if not delta:
                     continue
                 dx, dy = delta
 
                 # Already positioned?
-                if neigh_hash in positions:
-                    nx_, ny_ = positions[neigh_hash]
-                    # If coords don't match expected—treat as boundary
-                    if (cx + dx, cy + dy) != (nx_, ny_):
+                if neigh in positions:
+                    # if placement mismatches, skip
+                    if positions[neigh] != (cx + dx, cy + dy):
                         continue
                     else:
                         continue
@@ -83,11 +123,11 @@ class MapGraph(nx.Graph):
                 # Overlap check
                 target = (cx + dx, cy + dy)
                 owner = coord_owner.get(target)
-                if owner and owner != neigh_hash:
+                if owner and owner != neigh:
                     continue
 
-                positions[neigh_hash] = target
-                coord_owner[target] = neigh_hash
-                queue.append(neigh_hash)
+                positions[neigh] = target
+                coord_owner[target] = neigh
+                queue.append(neigh)
 
         return positions

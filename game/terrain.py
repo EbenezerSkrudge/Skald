@@ -2,6 +2,7 @@
 
 # Map GMCP “type” codes to (name, color‐hex)
 TERRAIN_TYPES = {
+    0:  ("none",        "#B36B00"),
     1:  ("water",       "#2196F3"),
     2:  ("under water", "#0277BD"),
     3:  ("air",         "#B3E5FC"),

@@ -155,15 +155,8 @@ class App:
 
         match pkg:
             case "LID":
-                if "area" not in parsed or not parsed["area"]:
-                    log.info("No area data in GMCP.  Spoofing area from map info.")
-                    mapper = self.main_window.mapper
-                    controller = mapper.controller if mapper else None
-
-                    cur_hash = getattr(controller, "_cur_hash", None)
-                    if cur_hash and cur_hash in controller.graph:
-                        inherited_area = controller.graph.nodes[cur_hash].get("area", "unknown")
-                        parsed["area"] = inherited_area
+                if "type" not in self.gmcp_data["LID"]:
+                    self.gmcp_data["LID"]["type"] = 0
                 self.fire_event("on_location_update", parsed)
 
             case "CVD":

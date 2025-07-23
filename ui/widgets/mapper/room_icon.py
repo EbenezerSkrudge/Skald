@@ -19,7 +19,6 @@ from game.terrain import TERRAIN_TYPES
 class RoomIcon(QGraphicsItemGroup):
     def __init__(self, grid_x: int, grid_y: int, short_desc: str, terrain: str):
         super().__init__()
-
         self.grid_x = grid_x
         self.grid_y = grid_y
         self.pos = QPointF(grid_x * GRID_SIZE, grid_y * GRID_SIZE)
