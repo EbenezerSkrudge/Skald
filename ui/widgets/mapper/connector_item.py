@@ -9,9 +9,9 @@ from PySide6.QtWidgets import (
     QGraphicsPolygonItem
 )
 from PySide6.QtGui import (
-    QPen, QBrush, QLinearGradient, QColor, QTransform, QPolygonF
+    QPen, QBrush, QLinearGradient, QColor, QTransform, QPolygonF, Qt
 )
-from PySide6.QtCore import QRectF, QPointF
+from PySide6.QtCore import QRectF, QPointF, QLineF
 
 from ui.widgets.mapper.constants import Z_CONNECTOR, Z_ROOM_SHAPE, Z_ROOM_ICON
 from game.terrain import TERRAIN_TYPES
@@ -187,37 +187,64 @@ class NonCardinalDirectionTag(QGraphicsItemGroup):
 
         self.setZValue(Z_ROOM_ICON)
 
+Z_BORDER_ARROW = Z_ROOM_ICON + 2
 
-class FoldedConnectorItem(QGraphicsItemGroup):
-    """A short folded arrow indicating a continuation off-map."""
-    def __init__(
-        self,
-        origin: QPointF,
-        direction: QPointF,
-        color: QColor,
-        full_length: float,
-        tip_offset: float = 2,
-        pen_width: float = 2,
-        arrowhead_size: float = 4
-    ):
+class BorderConnectorItem(QGraphicsPolygonItem):
+    def __init__(self, icon_a, icon_b=None, target_pos=None,
+                 arrow_size=8, shaft_length=16,
+                 color=Qt.yellow):
         super().__init__()
-        dx, dy = direction.x(), direction.y()
-        dist = math.hypot(dx, dy)
-        if dist == 0:
-            return
+        self.icon_a     = icon_a
+        self.icon_b     = icon_b
+        self.target_pos = target_pos
+        self.arrow_size = arrow_size
+        self.shaft_len  = shaft_length
+        self.color      = color
 
-        ux, uy = dx / dist, dy / dist
-        mid = QPointF(
-            origin.x() + ux * full_length / 2,
-            origin.y() + uy * full_length / 2
-        )
+        self.setPen(QPen(color))
+        self.setBrush(QBrush(color))
+        self.setZValue(Z_CONNECTOR)
 
-        se = shorten_line(origin, mid, tip_offset)
-        shaft = QGraphicsLineItem(origin.x(), origin.y(), se.x(), se.y())
-        shaft.setPen(QPen(color, pen_width))
-        self.addToGroup(shaft)
+        # create shaft as a separate QGraphicsLineItem
+        self.shaft = QGraphicsLineItem(self)
+        self.shaft.setPen(QPen(color, 2))
+        self.shaft.setZValue(Z_CONNECTOR - 1)
 
-        head = create_arrowhead(origin, mid, color, arrowhead_size)
-        self.addToGroup(head)
+        # build triangle once, pointing up from origin
+        h = arrow_size
+        w = arrow_size * 0.6
+        self._base_poly = QPolygonF([
+            QPointF(0, -h),
+            QPointF(-w, 0),
+            QPointF( w, 0),
+        ])
+        self.setPolygon(self._base_poly)
 
-        self.setZValue(Z_ROOM_SHAPE - 1)
+        self.refresh()
+
+    def refresh(self):
+        # p1 = anchor position
+        p1 = self.icon_a.scenePos()
+        # p2 = target (either icon_b or synthetic)
+        p2 = self.target_pos or self.icon_b.scenePos()
+
+        # midpoint
+        mid = QPointF((p1.x() + p2.x()) / 2,
+                      (p1.y() + p2.y()) / 2)
+
+        # direction vector
+        line = QLineF(p1, p2)
+        angle = line.angle()
+
+        # rotate and move the arrowhead
+        self.setPolygon(self._base_poly)
+        self.setRotation(-angle + 90)
+        self.setPos(mid)
+
+        # shaft: from tip toward base (i.e. upward in local space)
+        tip = QPointF(0, 0)
+        base = QPointF(0, self.shaft_len)
+        self.shaft.setLine(QLineF(tip, base))
+
+    def add_to_scene(self, scene):
+        scene.addItem(self)

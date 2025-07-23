@@ -1,19 +1,18 @@
 # ui/widgets/mapper/mapper_widget.py
 
-from PySide6.QtGui import QPainter
-from PySide6.QtWidgets import QGraphicsScene, QGraphicsView, QLabel, QInputDialog
+from PySide6.QtGui import QPainter, QAction
+from PySide6.QtWidgets import (
+    QGraphicsScene, QGraphicsView, QLabel, QInputDialog,
+    QMenu
+)
 from PySide6.QtCore import QPointF, Qt
 
 from ui.widgets.mapper.constants import GRID_SIZE
 from ui.widgets.mapper.map_controller import MapController
+from ui.widgets.mapper.connector_item import ConnectorItem
 
 
 class MapperWidget(QGraphicsView):
-    """
-    Displays the local submap (icons + connectors) managed by MapController.
-    No longer filters a global map by area; instead, MapController builds
-    and renders only the local subgraph on each update.
-    """
     def __init__(self, parent=None):
         super().__init__(parent)
 
@@ -33,6 +32,66 @@ class MapperWidget(QGraphicsView):
         # —– Controller hookup —–
         self.controller = MapController(self)
         self._scene.controller = self.controller
+
+        # —– Area label —–
+        self.area_label = QLabel("", self)
+        self.area_label.setStyleSheet(
+            "color: white; background-color: rgba(0, 0, 0, 128); padding: 2px;"
+        )
+        self.area_label.move(10, 10)
+        self.area_label.raise_()
+        self.area_label.setMinimumWidth(100)
+
+    def contextMenuEvent(self, event):
+        """
+        Right-click on a ConnectorItem to toggle its 'border' flag.
+        """
+        scene_pt = self.mapToScene(event.pos())
+        items = self.scene().items(scene_pt)
+
+        # look for the topmost ConnectorItem under the cursor
+        for it in items:
+            if isinstance(it, ConnectorItem):
+                # find the corresponding edge (a,b) in the controller
+                for edge, conn in self.controller._local_connectors.items():
+                    if conn is it:
+                        a_hash, b_hash = tuple(edge)
+                        break
+                else:
+                    # no matching edge found
+                    return
+
+                menu = QMenu(self)
+                is_border = self.controller.global_graph.is_border(a_hash, b_hash)
+
+                if is_border:
+                    action = QAction("Remove Border", self)
+                    action.triggered.connect(
+                        lambda checked, a=a_hash, b=b_hash:
+                        self._toggle_border(a, b, False)
+                    )
+                else:
+                    action = QAction("Set Border", self)
+                    action.triggered.connect(
+                        lambda checked, a=a_hash, b=b_hash:
+                        self._toggle_border(a, b, True)
+                    )
+
+                menu.addAction(action)
+                menu.exec_(event.globalPos())
+                return
+
+        # fallback to default if not clicking a connector
+        super().contextMenuEvent(event)
+
+    def _toggle_border(self, a_hash: str, b_hash: str, flag: bool):
+        """
+        Flip the 'border' flag on the given edge, then rebuild & redraw.
+        """
+        self.controller.global_graph.set_border(a_hash, b_hash, flag)
+        self.controller.build_local_area()
+        self.controller._render_local_graph()
+        self.controller.mapUpdated.emit()
 
     def wheelEvent(self, event):
         factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15

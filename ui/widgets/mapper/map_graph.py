@@ -23,8 +23,9 @@ def _strip_vertical_suffix(dir_text: str) -> str:
 
 class MapGraph(nx.Graph):
     """
-    A graph of Room instances.  Nodes are keyed by room.hash,
-    stored in node attribute 'room'.
+    A graph of Room instances. Nodes are keyed by room.hash,
+    stored in node attribute 'room'. Edges carry an optional
+    'border' flag (bool) to mark non-traversable boundaries.
     """
 
     def add_room(self, room: Room):
@@ -42,7 +43,7 @@ class MapGraph(nx.Graph):
         """
         Creates or updates a Room node from GMCP info, then
         stubs out placeholders for any linked-but-unseen rooms
-        and connects them bidirectionally.
+        and (re)connects them, preserving any existing border flag.
         """
         room_hash = info.get("hash")
         if not room_hash:
@@ -58,16 +59,25 @@ class MapGraph(nx.Graph):
             room = Room(info)
             self.add_room(room)
 
-        # 2) Ensure stubs for every linked room
+        # 2) Ensure stubs + (re)connect, preserving border
         for dest_hash in room.links.values():
             if not dest_hash:
                 continue
+
+            # create stub if needed
             if dest_hash not in self.nodes:
                 stub = Room({"hash": dest_hash})
                 self.add_room(stub)
 
-            # 3) Connect them
-            self.add_edge(room_hash, dest_hash)
+            # preserve any existing border flag
+            existing_border = False
+            if self.has_edge(room_hash, dest_hash):
+                existing_border = bool(
+                    self[room_hash][dest_hash].get("border", False)
+                )
+
+            # (re)connect with preserved flag
+            self.connect_rooms(room_hash, dest_hash, border=existing_border)
 
     def has_room(self, room_hash: str) -> bool:
         return room_hash in self.nodes
@@ -76,24 +86,41 @@ class MapGraph(nx.Graph):
         data = self.nodes.get(room_hash)
         return data["room"] if data else None
 
-    def connect_rooms(self, src_hash: str, dst_hash: str):
+    def connect_rooms(self, src_hash: str, dst_hash: str, border: bool = False):
         """
-        Convenience: add an edge if both nodes exist.
+        Convenience: add or update an edge if both nodes exist.
+        'border=True' flags this connection as a non-traversable boundary.
         """
         if src_hash in self.nodes and dst_hash in self.nodes:
-            self.add_edge(src_hash, dst_hash)
+            self.add_edge(src_hash, dst_hash, border=bool(border))
+
+    def set_border(self, a_hash: str, b_hash: str, border: bool = True):
+        """
+        Toggle the 'border' flag on an existing edge.
+        """
+        if self.has_edge(a_hash, b_hash):
+            self[a_hash][b_hash]['border'] = bool(border)
+
+    def is_border(self, a_hash: str, b_hash: str) -> bool:
+        """
+        Return True if the edge is marked as a boundary.
+        """
+        if self.has_edge(a_hash, b_hash):
+            return bool(self[a_hash][b_hash].get('border', False))
+        return False
 
     def layout_from_root(self, root_hash: str) -> dict[str, tuple[int, int]]:
         """
         Flood-fill from root_hash, mapping each room to a (grid_x, grid_y)
-        coordinate by following links.  Strips "up"/"down" suffix for placement.
-        Stops traversing when a placement would overlap an existing room.
+        coordinate by following links. Strips "up"/"down" suffix for placement.
+        Stops traversing when a placement would overlap an existing room,
+        or when crossing a border edge.
         """
         if root_hash not in self.nodes:
             return {}
 
         positions: dict[str, tuple[int, int]] = {root_hash: (0, 0)}
-        coord_owner: dict[tuple[int,int], str] = {(0, 0): root_hash}
+        coord_owner: dict[tuple[int, int], str] = {(0, 0): root_hash}
         queue = collections.deque([root_hash])
 
         while queue:
@@ -103,6 +130,10 @@ class MapGraph(nx.Graph):
             room.grid_x, room.grid_y = cx, cy
 
             for dir_txt, neigh in room.links.items():
+                # block traversal across borders
+                if self.is_border(cur, neigh):
+                    continue
+
                 if not neigh or neigh not in self.nodes:
                     continue
 
@@ -114,11 +145,7 @@ class MapGraph(nx.Graph):
 
                 # Already positioned?
                 if neigh in positions:
-                    # if placement mismatches, skip
-                    if positions[neigh] != (cx + dx, cy + dy):
-                        continue
-                    else:
-                        continue
+                    continue
 
                 # Overlap check
                 target = (cx + dx, cy + dy)
