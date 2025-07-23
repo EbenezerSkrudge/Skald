@@ -9,7 +9,7 @@ from PySide6.QtCore import QPointF, Qt
 
 from ui.widgets.mapper.constants import GRID_SIZE
 from ui.widgets.mapper.map_controller import MapController
-from ui.widgets.mapper.connector_item import ConnectorItem
+from ui.widgets.mapper.connector_item import ConnectorItem, BorderConnectorItem
 
 
 class MapperWidget(QGraphicsView):
@@ -43,46 +43,50 @@ class MapperWidget(QGraphicsView):
         self.area_label.setMinimumWidth(100)
 
     def contextMenuEvent(self, event):
-        """
-        Right-click on a ConnectorItem to toggle its 'border' flag.
-        """
         scene_pt = self.mapToScene(event.pos())
         items = self.scene().items(scene_pt)
 
-        # look for the topmost ConnectorItem under the cursor
         for it in items:
+            # — 1) normal ConnectorItem? —
             if isinstance(it, ConnectorItem):
-                # find the corresponding edge (a,b) in the controller
+                # find its edge in _local_connectors
                 for edge, conn in self.controller._local_connectors.items():
                     if conn is it:
-                        a_hash, b_hash = tuple(edge)
+                        a_hash, b_hash = edge
                         break
                 else:
-                    # no matching edge found
-                    return
+                    continue
 
-                menu = QMenu(self)
-                is_border = self.controller.global_graph.is_border(a_hash, b_hash)
+            # — 2) border arrow? —
+            elif isinstance(it, BorderConnectorItem):
+                # read the attributes we stored on creation
+                a_hash = getattr(it, "a_hash", None)
+                b_hash = getattr(it, "b_hash", None)
+                if not (a_hash and b_hash):
+                    continue
 
-                if is_border:
-                    action = QAction("Remove Border", self)
-                    action.triggered.connect(
-                        lambda checked, a=a_hash, b=b_hash:
-                        self._toggle_border(a, b, False)
-                    )
-                else:
-                    action = QAction("Set Border", self)
-                    action.triggered.connect(
-                        lambda checked, a=a_hash, b=b_hash:
-                        self._toggle_border(a, b, True)
-                    )
+            else:
+                continue  # not a connector we care about
 
-                menu.addAction(action)
-                menu.exec_(event.globalPos())
-                return
+            # Normalize ordering
+            a, b = sorted((a_hash, b_hash))
 
-        # fallback to default if not clicking a connector
+            # Build menu
+            is_border = self.controller.global_graph.is_border(a, b)
+            menu = QMenu(self)
+            label = "Remove Border" if is_border else "Set Border"
+            action = QAction(label, self)
+            # toggle to the opposite of current state
+            action.triggered.connect(
+                lambda _, x=a, y=b, f=not is_border: self._toggle_border(x, y, f)
+            )
+            menu.addAction(action)
+            menu.exec_(event.globalPos())
+            return
+
+        # fallback if we didn’t hit a connector
         super().contextMenuEvent(event)
+
 
     def _toggle_border(self, a_hash: str, b_hash: str, flag: bool):
         """

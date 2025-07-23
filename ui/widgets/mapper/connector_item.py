@@ -49,47 +49,126 @@ def create_arrowhead(start: QPointF, end: QPointF, color: QColor, size: float = 
 
 
 class ConnectorItem(QGraphicsLineItem):
-    def __init__(self, room_a, room_b):
-        # store original refs (Room or RoomIcon)
-        self._raw_a = room_a
-        self._raw_b = room_b
+    """
+    A simple line between two RoomIcon.scenePos() points,
+    accepts hover events to highlight when under the cursor.
+    """
+
+    def __init__(self, icon_a, icon_b, color=Qt.darkGray, width=5):
         super().__init__()
+        self.icon_a = icon_a
+        self.icon_b = icon_b
+
+        # Normal vs hover pens
+        self._normal_pen = QPen(QColor(color), width)
+        self._hover_pen  = QPen(QColor(Qt.cyan), width + 1)
+
+        self.setPen(self._normal_pen)
         self.setZValue(Z_CONNECTOR)
+
+        # Enable hover events
+        self.setAcceptHoverEvents(True)
+
+        # Initial draw
         self.refresh()
 
     def refresh(self):
-        # resolve the actual icon and terrain for each endpoint
-        if hasattr(self._raw_a, "icon"):
-            icon_a = self._raw_a.icon
-            terrain_a = self._raw_a.terrain
-        else:
-            icon_a = self._raw_a
-            terrain_a = self._raw_a.terrain
+        p1 = self.icon_a.scenePos()
+        p2 = self.icon_b.scenePos()
+        self.setLine(QLineF(p1, p2))
 
-        if hasattr(self._raw_b, "icon"):
-            icon_b = self._raw_b.icon
-            terrain_b = self._raw_b.terrain
-        else:
-            icon_b = self._raw_b
-            terrain_b = self._raw_b.terrain
+    def hoverEnterEvent(self, event):
+        self.setPen(self._hover_pen)
+        super().hoverEnterEvent(event)
 
-        # compute endpoints from scene positions
-        p1 = icon_a.sceneBoundingRect().center()
-        p2 = icon_b.sceneBoundingRect().center()
-        self.setLine(p1.x(), p1.y(), p2.x(), p2.y())
+    def hoverLeaveEvent(self, event):
+        self.setPen(self._normal_pen)
+        super().hoverLeaveEvent(event)
 
-        # rebuild gradient pen
-        hex_a = TERRAIN_TYPES.get(terrain_a, ("unknown", "#888"))[1]
-        hex_b = TERRAIN_TYPES.get(terrain_b, ("unknown", "#888"))[1]
-        col_a = QColor(hex_a)
-        col_b = QColor(hex_b)
+    def add_to_scene(self, scene):
+        scene.addItem(self)
 
-        grad = QLinearGradient(p1, p2)
-        grad.setColorAt(0.0, col_a)
-        grad.setColorAt(1.0, col_b)
 
-        pen = QPen(QBrush(grad), 4)
-        self.setPen(pen)
+class BorderConnectorItem(QGraphicsPolygonItem):
+    """
+    A little arrow + shaft indicating a 'border' link.
+    Also highlights on hover.
+    """
+
+    def __init__(self, icon_a, icon_b=None, target_pos=None,
+                 arrow_size=8, shaft_length=16, color=Qt.yellow):
+        super().__init__()
+        self.icon_a     = icon_a
+        self.icon_b     = icon_b
+        self.target_pos = target_pos
+        self.arrow_size = arrow_size
+        self.shaft_len  = shaft_length
+
+        # Pens for normal vs hover
+        self._normal_pen = QPen(QColor(color), 4)
+        self._hover_pen  = QPen(QColor(Qt.cyan), 5)
+
+        self.setPen(self._normal_pen)
+        self.setBrush(QBrush(QColor(color)))
+        self.setZValue(Z_CONNECTOR)
+
+        # Build the shaft as a child line item
+        self.shaft = QGraphicsLineItem(self)
+        self.shaft.setPen(self._normal_pen)
+        self.shaft.setZValue(Z_CONNECTOR - 1)
+
+        # Build the arrowhead polygon (pointing up at local origin)
+        h = arrow_size
+        w = arrow_size * 0.6
+        self._base_poly = QPolygonF([
+            QPointF(0, -h),
+            QPointF(-w, 0),
+            QPointF( w, 0),
+        ])
+        self.setPolygon(self._base_poly)
+
+        # Enable hover events
+        self.setAcceptHoverEvents(True)
+        self.shaft.setAcceptHoverEvents(True)
+
+        # Initial draw/position
+        self.refresh()
+
+    def refresh(self):
+        # Anchor and target positions in scene coords
+        p1 = self.icon_a.scenePos()
+        p2 = self.target_pos or self.icon_b.scenePos()
+
+        # Midpoint for placing the arrowhead
+        mid = QPointF((p1.x() + p2.x()) / 2,
+                      (p1.y() + p2.y()) / 2)
+
+        # Compute rotation angle (0° = east, 90° = north)
+        angle = QLineF(p1, p2).angle()
+
+        # Rotate & move arrowhead
+        self.setRotation(-angle + 90)
+        self.setPos(mid)
+
+        # Draw shaft *behind* the arrow
+        # Local coords: tip at (0,0), shaft extends further back (positive Y)
+        tip  = QPointF(0, 0)
+        back = QPointF(0, self.shaft_len)
+        self.shaft.setLine(QLineF(tip, back))
+
+    def hoverEnterEvent(self, event):
+        self.setPen(self._hover_pen)
+        self.shaft.setPen(self._hover_pen)
+        super().hoverEnterEvent(event)
+
+    def hoverLeaveEvent(self, event):
+        self.setPen(self._normal_pen)
+        self.shaft.setPen(self._normal_pen)
+        super().hoverLeaveEvent(event)
+
+    def add_to_scene(self, scene):
+        scene.addItem(self)
+
 
 
 class DoorConnectorItem(ConnectorItem):
@@ -186,65 +265,3 @@ class NonCardinalDirectionTag(QGraphicsItemGroup):
             self.addToGroup(ud)
 
         self.setZValue(Z_ROOM_ICON)
-
-Z_BORDER_ARROW = Z_ROOM_ICON + 2
-
-class BorderConnectorItem(QGraphicsPolygonItem):
-    def __init__(self, icon_a, icon_b=None, target_pos=None,
-                 arrow_size=8, shaft_length=16,
-                 color=Qt.yellow):
-        super().__init__()
-        self.icon_a     = icon_a
-        self.icon_b     = icon_b
-        self.target_pos = target_pos
-        self.arrow_size = arrow_size
-        self.shaft_len  = shaft_length
-        self.color      = color
-
-        self.setPen(QPen(color))
-        self.setBrush(QBrush(color))
-        self.setZValue(Z_CONNECTOR)
-
-        # create shaft as a separate QGraphicsLineItem
-        self.shaft = QGraphicsLineItem(self)
-        self.shaft.setPen(QPen(color, 2))
-        self.shaft.setZValue(Z_CONNECTOR - 1)
-
-        # build triangle once, pointing up from origin
-        h = arrow_size
-        w = arrow_size * 0.6
-        self._base_poly = QPolygonF([
-            QPointF(0, -h),
-            QPointF(-w, 0),
-            QPointF( w, 0),
-        ])
-        self.setPolygon(self._base_poly)
-
-        self.refresh()
-
-    def refresh(self):
-        # p1 = anchor position
-        p1 = self.icon_a.scenePos()
-        # p2 = target (either icon_b or synthetic)
-        p2 = self.target_pos or self.icon_b.scenePos()
-
-        # midpoint
-        mid = QPointF((p1.x() + p2.x()) / 2,
-                      (p1.y() + p2.y()) / 2)
-
-        # direction vector
-        line = QLineF(p1, p2)
-        angle = line.angle()
-
-        # rotate and move the arrowhead
-        self.setPolygon(self._base_poly)
-        self.setRotation(-angle + 90)
-        self.setPos(mid)
-
-        # shaft: from tip toward base (i.e. upward in local space)
-        tip = QPointF(0, 0)
-        base = QPointF(0, self.shaft_len)
-        self.shaft.setLine(QLineF(tip, base))
-
-    def add_to_scene(self, scene):
-        scene.addItem(self)
