@@ -4,9 +4,11 @@ from PySide6.QtCore import QObject, Signal, QPointF
 
 from ui.widgets.mapper.location_widget       import LocationWidget
 from ui.widgets.mapper.room_icon             import RoomIcon
-from ui.widgets.mapper.connector_item        import ConnectorItem, BorderConnectorItem
+from ui.widgets.mapper.connector_item        import ConnectorItem, BorderConnectorItem, NonCardinalDirectionTag
 from ui.widgets.mapper.map_graph             import MapGraph
 from ui.widgets.mapper.constants             import GRID_SIZE
+
+from pprint import PrettyPrinter
 
 
 class MapController(QObject):
@@ -36,6 +38,7 @@ class MapController(QObject):
         self.global_graph      = MapGraph()
         self.local_graph       = MapGraph()
         self._local_positions  = {}    # room_hash -> (grid_x, grid_y)
+        self._local_direction_tags = []
         self._cur_hash         = None
 
         # scene‐tracking collections
@@ -49,6 +52,8 @@ class MapController(QObject):
         self._prev_links = {}
 
     def on_room_info(self, info: dict):
+        pp = PrettyPrinter(indent=4)
+        pp.pprint(info)
         room_hash = info.get("hash")
         if not room_hash:
             return
@@ -148,6 +153,11 @@ class MapController(QObject):
         self._local_connectors.clear()
         self._local_drawn_edges.clear()
 
+        # clear old non‐cardinal tags
+        for tag in self._local_direction_tags:
+            scene.removeItem(tag)
+        self._local_direction_tags.clear()
+
         # draw RoomIcons
         for room_hash, data in self.local_graph.nodes(data=True):
             room = data["room"]
@@ -155,6 +165,15 @@ class MapController(QObject):
             icon = RoomIcon(grid_x=gx, grid_y=gy,
                             short_desc=room.desc,
                             terrain=room.terrain)
+
+            # Add non-cardinal direction tags
+            dirs = [d.lower() for d, dest in room.links.items() if dest]
+            tags = [d for d in dirs if d in ("in", "out", "up", "down")]
+            if tags:
+                tag = NonCardinalDirectionTag(icon, tags)
+                scene.addItem(tag)
+                self._local_direction_tags.append(tag)
+
             room.icon = icon
             scene.addItem(icon)
             self._local_icons[room_hash] = icon

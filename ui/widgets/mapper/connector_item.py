@@ -15,37 +15,7 @@ from PySide6.QtCore import QRectF, QPointF, QLineF
 
 from ui.widgets.mapper.constants import Z_CONNECTOR, Z_ROOM_SHAPE, Z_ROOM_ICON
 from game.terrain import TERRAIN_TYPES
-
-
-def shorten_line(start: QPointF, end: QPointF, offset: float) -> QPointF:
-    dx, dy = end.x() - start.x(), end.y() - start.y()
-    d = math.hypot(dx, dy)
-    if d == 0:
-        return end
-    ux, uy = dx / d, dy / d
-    return QPointF(end.x() - ux * offset, end.y() - uy * offset)
-
-
-def create_arrowhead(start: QPointF, end: QPointF, color: QColor, size: float = 4) -> QGraphicsPolygonItem:
-    dx, dy = end.x() - start.x(), end.y() - start.y()
-    d = math.hypot(dx, dy)
-    if d == 0:
-        return QGraphicsPolygonItem()
-    ux, uy = dx / d, dy / d
-    px, py = -uy, ux
-
-    tip   = QPointF(end.x() + ux * 0.5, end.y() + uy * 0.5)
-    left  = QPointF(end.x() - ux * size + px * size,
-                    end.y() - uy * size + py * size)
-    right = QPointF(end.x() - ux * size - px * size,
-                    end.y() - uy * size - py * size)
-
-    poly = QPolygonF([tip, left, right])
-    arrow = QGraphicsPolygonItem(poly)
-    arrow.setBrush(QBrush(color))
-    arrow.setPen(QPen(color))
-    arrow.setZValue(Z_ROOM_ICON)
-    return arrow
+from ui.widgets.mapper.utils import shorten_line, create_arrowhead
 
 
 class ConnectorItem(QGraphicsLineItem):
@@ -214,16 +184,27 @@ class DoorConnectorItem(ConnectorItem):
 
 
 class NonCardinalDirectionTag(QGraphicsItemGroup):
-    """Renders in/out or up/down arrows around a room."""
-    def __init__(self, room, directions: list[str]):
+    """
+    Renders in/out or up/down arrows around an icon.
+    `icon` should be a QGraphicsItem you can query for its scene‐center.
+    `directions` is a list like ['in','up'] etc.
+    """
+    def __init__(self, icon, directions: list[str]):
         super().__init__()
-        cx, cy = room.center().x(), room.center().y()
-        orange = QColor("orange")
-        arrow_pen = QPen(orange, 2)
-        dash_pen = QPen(orange, 3)
 
+        # compute the icon’s center in SCENE coords
+        br = icon.boundingRect()
+        center_local = br.center()
+        center_scene = icon.mapToScene(center_local)
+        cx, cy = center_scene.x(), center_scene.y()
+
+        orange   = QColor("orange")
+        arrow_pen = QPen(orange, 3)
+        dash_pen  = QPen(orange, 3)
+
+        # 1) the in/out bubble + arrows
         if any(d in directions for d in ("in", "out")):
-            io = QGraphicsItemGroup()
+            io = QGraphicsItemGroup(self)
             circ = QGraphicsEllipseItem(QRectF(-6, -6, 12, 12))
             circ.setPen(QPen(orange, 2))
             io.addToGroup(circ)
@@ -231,20 +212,23 @@ class NonCardinalDirectionTag(QGraphicsItemGroup):
             for d in ("in", "out"):
                 if d not in directions:
                     continue
-                start = QPointF(7, 7) if d == "in" else QPointF(0, 0)
-                end = QPointF(-2, -2) if d == "in" else QPointF(9, 9)
+                # in: arrow pointing into the bubble
+                start = QPointF(7, 7)   if d == "in"  else QPointF(0, 0)
+                end   = QPointF(-2, -2) if d == "in"  else QPointF(9, 9)
                 se = shorten_line(start, end, 2)
                 shaft = QGraphicsLineItem(start.x(), start.y(), se.x(), se.y())
                 shaft.setPen(arrow_pen)
                 io.addToGroup(shaft)
                 io.addToGroup(create_arrowhead(start, end, orange))
+
             io.setPos(cx + 30, cy + 11)
             io.setZValue(Z_ROOM_ICON)
-            self.addToGroup(io)
 
+        # 2) the up/down dashes + arrows
         if any(d in directions for d in ("up", "down")):
-            ud = QGraphicsItemGroup()
-            for x in (-6, 6):
+            ud = QGraphicsItemGroup(self)
+            # little dashes at left/right
+            for x in (-5, 6):
                 dash = QGraphicsLineItem(x - 1, 0, x, 0)
                 dash.setPen(dash_pen)
                 ud.addToGroup(dash)
@@ -252,16 +236,17 @@ class NonCardinalDirectionTag(QGraphicsItemGroup):
             for d in ("up", "down"):
                 if d not in directions:
                     continue
+                # up: arrow pointing upward, down: arrow pointing downward
                 y = 6
-                start = QPointF(0, y) if d == "up" else QPointF(0, -y)
-                end = QPointF(0, -y - 2) if d == "up" else QPointF(0, y + 2)
+                start = QPointF(0,  y)     if d == "up"   else QPointF(0, -y)
+                end   = QPointF(0, -y - 2) if d == "up"   else QPointF(0, y + 2)
                 se = shorten_line(start, end, 2)
                 shaft = QGraphicsLineItem(start.x(), start.y(), se.x(), se.y())
                 shaft.setPen(arrow_pen)
                 ud.addToGroup(shaft)
                 ud.addToGroup(create_arrowhead(start, end, orange))
+
             ud.setPos(cx + 31, cy - 12)
             ud.setZValue(Z_ROOM_ICON)
-            self.addToGroup(ud)
 
         self.setZValue(Z_ROOM_ICON)
