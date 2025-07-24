@@ -44,20 +44,16 @@ class MapGraph(nx.Graph):
             info: dict,
             exit_types: dict[str, int] | None = None):
         """
-        Create/update a Room from GMCP info, stub unseen neighbors,
-        and connect edges, preserving existing 'border' and 'door_open'
-        flags unless overridden by exit_types.
-
-        exit_types maps direction names (e.g. 'north') to an integer:
-          101  => open door
-         -101  => closed door
+        exit_types maps directions → int (101=open door, –101=closed door).
+        Closed doors get auto‐bordered only on first discovery; after that
+        manual toggles persist.
         """
         exit_types = exit_types or {}
         room_hash = info.get("hash")
         if not room_hash:
             return
 
-        # 1) Create or update the primary room node
+        # 1) create or update the node
         if room_hash in self.nodes:
             room = self.nodes[room_hash]["room"]
             room.desc    = info.get("short", room.desc)
@@ -67,40 +63,53 @@ class MapGraph(nx.Graph):
             room = Room(info)
             self.add_room(room)
 
-        # 2) For each directional link, stub + (re)connect
+        # 2) walk each link
         for dir_txt, dest_hash in room.links.items():
             if not dest_hash:
                 continue
 
-            # stub unseen room
+            # ensure stub
             if dest_hash not in self.nodes:
                 stub = Room({"hash": dest_hash})
                 self.add_room(stub)
 
-            # preserve existing flags if edge already exists
+            had_edge = self.has_edge(room_hash, dest_hash)
             existing_border    = False
             existing_door_open = None
-            if self.has_edge(room_hash, dest_hash):
+            if had_edge:
                 data = self[room_hash][dest_hash]
                 existing_border    = bool(data.get("border", False))
                 existing_door_open = data.get("door_open", None)
 
-            # determine new door_open from exit_types, else preserve
+            # default to preserving old flags
+            door_open = existing_door_open
+            border    = existing_border
+
+            # override based on GMCP exit code
             code = exit_types.get(dir_txt)
             if code == 101:
+                # open door → no border
                 door_open = True
-            elif code == -101:
-                door_open = False
-            else:
-                door_open = existing_door_open
+                if not had_edge:
+                    border = False
 
-            # (re)connect with preserved or new flags
+            elif code == -101:
+                # closed door → auto‐border only first time
+                door_open = False
+                if not had_edge:
+                    border = True
+                # else keep whatever 'border' was manually set
+
+            # else: no door info → keep existing door_open & border
+
+            # (re)connect with determined flags
             self.connect_rooms(
                 room_hash,
                 dest_hash,
-                border=existing_border,
+                border=border,
                 door_open=door_open
             )
+
 
     def has_room(self, room_hash: str) -> bool:
         return room_hash in self.nodes
