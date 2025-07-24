@@ -140,46 +140,64 @@ class BorderConnectorItem(QGraphicsPolygonItem):
         scene.addItem(self)
 
 
-
 class DoorConnectorItem(ConnectorItem):
     """
     A ConnectorItem with a door‐symbol overlay (green=open, red=closed).
     """
+
     def __init__(self, room_a, room_b, door_open: bool = True):
+        # 1) remember door state
         self.door_open = door_open
+
+        # 2) create a 'dummy' symbol_item so refresh() in the base class won't fail
+        self.symbol_item = QGraphicsRectItem()
+        # don't set a parent yet—that will happen after super().__init__
+
+        # 3) init the line+base refresh
         super().__init__(room_a, room_b)
 
-        # create the symbol once
-        self.symbol_item = QGraphicsRectItem()
+        # 4) now that the QGraphicsLineItem is fully built, re-parent the rect
+        self.symbol_item.setParentItem(self)
         self.symbol_item.setZValue(Z_ROOM_SHAPE)
+
+        # 5) final refresh to size & rotate the door‐rect correctly
         self.refresh()
 
     def refresh(self):
         # reposition the line
         super().refresh()
 
-        # compute midpoint & rotation
+        # compute midpoint
         line = self.line()
-        mid = QPointF((line.x1() + line.x2()) / 2, (line.y1() + line.y2()) / 2)
+        mid = QPointF(
+            (line.x1() + line.x2()) / 2,
+            (line.y1() + line.y2()) / 2
+        )
 
-        # update symbol geometry
+        # update the door‐rect
         rect = QRectF(mid.x() - 15, mid.y() - 3, 30, 6)
         self.symbol_item.setRect(rect)
 
-        angle = math.degrees(math.atan2(line.y2() - line.y1(),
-                                        line.x2() - line.x1()))
+        # rotation: align with the line
+        angle = math.degrees(math.atan2(
+            line.y2() - line.y1(),
+            line.x2() - line.x1()
+        ))
         rotation = angle + (45 if self.door_open else 90)
 
-        color = QColor("lime") if self.door_open else QColor("red")
-        pen_color = QColor("white") if self.door_open else QColor("black")
+        # color by open/closed
+        fill = QColor("lime") if self.door_open else QColor("red")
+        penc = QColor("white") if self.door_open else QColor("black")
+        self.symbol_item.setBrush(QBrush(fill))
+        self.symbol_item.setPen(QPen(penc, 1))
 
-        self.symbol_item.setBrush(QBrush(color))
-        self.symbol_item.setPen(QPen(pen_color, 1))
-
-        xf = (QTransform()
+        # rotate around center
+        xf = (
+            QTransform()
               .translate(mid.x(), mid.y())
               .rotate(rotation)
-              .translate(-mid.x(), -mid.y()))
+              .translate(-mid.x(), -mid.y())
+        )
         self.symbol_item.setTransform(xf)
 
 

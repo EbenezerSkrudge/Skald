@@ -1,31 +1,32 @@
 # ui/widgets/mapper/map_controller.py
 
+import math
 from PySide6.QtCore import QObject, Signal, QPointF
+from PySide6.QtWidgets import QGraphicsScene
 
 from ui.widgets.mapper.location_widget       import LocationWidget
 from ui.widgets.mapper.room_icon             import RoomIcon
-from ui.widgets.mapper.connector_item        import ConnectorItem, BorderConnectorItem, NonCardinalDirectionTag
+from ui.widgets.mapper.connector_item import ConnectorItem, DoorConnectorItem, BorderConnectorItem, \
+    NonCardinalDirectionTag
 from ui.widgets.mapper.map_graph             import MapGraph
 from ui.widgets.mapper.constants             import GRID_SIZE
-
-from pprint import PrettyPrinter
 
 
 class MapController(QObject):
     """
-    Maintains a global topology graph and a spatially‐laid‐out local subgraph
-    for rendering. Honors 'border' flags to block traversal and draw arrows.
+    Maintains global_graph and a laid-out local_graph.
+    Edges can be:
+      - normal (ConnectorItem)
+      - doors (DoorConnectorItem, coded by exits:101/–101)
+      - borders (BorderConnectorItem)
     """
     mapUpdated = Signal()
 
-    # Direction name → numeric keypad code
     _TXT_TO_NUM = {
         "northwest": 7, "north": 8, "northeast": 9,
         "west":      4,                  "east": 6,
         "southwest": 1, "south": 2, "southeast": 3,
     }
-
-    # Numeric keypad code → (dx, dy)
     _NUM_TO_DELTA = {
         1: (-1, +1), 2: (0, +1),  3: (+1, +1),
         4: (-1,  0),             6: (+1,  0),
@@ -34,57 +35,57 @@ class MapController(QObject):
 
     def __init__(self, mapper_widget):
         super().__init__()
-        self.map               = mapper_widget
-        self.global_graph      = MapGraph()
-        self.local_graph       = MapGraph()
-        self._local_positions  = {}    # room_hash -> (grid_x, grid_y)
-        self._local_direction_tags = []
-        self._cur_hash         = None
+        self.map                = mapper_widget
+        self.global_graph       = MapGraph()
+        self.local_graph        = MapGraph()
+        self._local_positions   = {}
+        self._cur_hash          = None
 
-        # scene‐tracking collections
-        self._local_icons        = {}   # room_hash -> RoomIcon
-        self._local_connectors   = {}   # frozenset((a,b)) -> ConnectorItem
-        self._local_drawn_edges  = set()
-        self._local_border_arrows = []  # list of BorderConnectorItem
-
-        # player marker
-        self._marker     = None
-        self._prev_links = {}
+        # scene item trackers
+        self._local_icons         = {}
+        self._local_connectors    = {}
+        self._local_drawn_edges   = set()
+        self._local_border_arrows = []
+        self._local_direction_tags= []
+        self._marker              = None
+        self._prev_links          = {}
 
     def on_room_info(self, info: dict):
-        pp = PrettyPrinter(indent=4)
-        pp.pprint(info)
+        """
+        Called whenever GMCP.Room.Info arrives.
+        Expects info["links"] and info["exits"].
+        """
         room_hash = info.get("hash")
         if not room_hash:
             return
 
-        # capture previous room's links
+        # capture previous links for movement arrow
         if self._cur_hash and self.global_graph.has_room(self._cur_hash):
-            prev_room = self.global_graph.get_room(self._cur_hash)
-            self._prev_links = dict(prev_room.links)
+            self._prev_links = dict(self.global_graph.get_room(self._cur_hash).links)
         else:
             self._prev_links = {}
 
-        # update global graph
-        self.global_graph.add_or_update_room(info)
+        # Pass the GMCP 'exits' dict into add_or_update_room
+        exits = info.get("exits", {})    # e.g. {"north":101,"south":-101}
+        self.global_graph.add_or_update_room(info, exit_types=exits)
 
-        # compute movement direction code
+        # set current room and compute move_code
         prev_hash = self._cur_hash
         self._cur_hash = room_hash
         move_code = None
         if prev_hash:
-            move_dir = next(
+            movedir = next(
                 (d for d, dest in self._prev_links.items() if dest == room_hash),
                 None
             )
-            if move_dir:
-                base, _ = self._split_suffix(move_dir)
+            if movedir:
+                base, _ = self._split_suffix(movedir)
                 move_code = self._TXT_TO_NUM.get(base)
 
-        # rebuild local area (skipping border edges)
+        # rebuild the local submap (skips border edges)
         self.build_local_area()
 
-        # place or update the player marker
+        # update or place the player marker
         gx, gy = self._local_positions.get(room_hash, (0, 0))
         if self._marker is None:
             self._marker = LocationWidget(gx, gy, direction_code=move_code)
@@ -93,31 +94,23 @@ class MapController(QObject):
             self._marker.update_position(gx, gy)
             self._marker.update_direction(move_code)
 
-        # redraw map and emit update
+        # redraw everything
         self._render_local_graph()
         self.mapUpdated.emit()
 
     def build_local_area(self) -> MapGraph:
-        """
-        Flood‐fill from self._cur_hash to assign (grid_x, grid_y),
-        then build a local_graph including only non-border edges.
-        """
         if not self._cur_hash or not self.global_graph.has_room(self._cur_hash):
             self.local_graph = MapGraph()
             self._local_positions.clear()
             return self.local_graph
 
-        # compute layout positions
         positions = self.global_graph.layout_from_root(self._cur_hash)
         self._local_positions = positions
 
-        # assemble nodes
         local = MapGraph()
-        for room_hash in positions:
-            room = self.global_graph.get_room(room_hash)
-            local.add_room(room)
+        for h in positions:
+            local.add_room(self.global_graph.get_room(h))
 
-        # copy only non-border edges
         for a, b in self.global_graph.edges():
             if a in positions and b in positions:
                 if not self.global_graph.is_border(a, b):
@@ -127,25 +120,20 @@ class MapController(QObject):
         return local
 
     def _render_local_graph(self):
-        """
-        Clears previous items, then draws:
-        - RoomIcon for each local node
-        - ConnectorItem for each local edge
-        - BorderConnectorItem for each border edge touching the map
-        """
-        scene = self.map.scene()
+        scene: QGraphicsScene = self.map.scene()
 
-        # remove old border arrows
-        for arr in self._local_border_arrows:
-            scene.removeItem(arr)
+        # clear old tags/arrows
+        for item in (*self._local_border_arrows, *self._local_direction_tags):
+            scene.removeItem(item)
         self._local_border_arrows.clear()
+        self._local_direction_tags.clear()
 
-        # remove old room icons
+        # clear icons
         for icon in self._local_icons.values():
             scene.removeItem(icon)
         self._local_icons.clear()
 
-        # remove old connectors
+        # clear connectors
         for conn in self._local_connectors.values():
             scene.removeItem(conn)
             if hasattr(conn, "symbol_item"):
@@ -153,75 +141,75 @@ class MapController(QObject):
         self._local_connectors.clear()
         self._local_drawn_edges.clear()
 
-        # clear old non‐cardinal tags
-        for tag in self._local_direction_tags:
-            scene.removeItem(tag)
-        self._local_direction_tags.clear()
+        # draw rooms + non-cardinal tags
+        #from ui.widgets.mapper.non_cardinal_direction_tag import NonCardinalDirectionTag
 
-        # draw RoomIcons
         for room_hash, data in self.local_graph.nodes(data=True):
             room = data["room"]
             gx, gy = self._local_positions[room_hash]
             icon = RoomIcon(grid_x=gx, grid_y=gy,
                             short_desc=room.desc,
                             terrain=room.terrain)
+            room.icon = icon
+            scene.addItem(icon)
+            self._local_icons[room_hash] = icon
 
-            # Add non-cardinal direction tags
-            dirs = [d.lower() for d, dest in room.links.items() if dest]
+            # in/out or up/down arrows
+            dirs = [d.lower() for d, dst in room.links.items() if dst]
             tags = [d for d in dirs if d in ("in", "out", "up", "down")]
             if tags:
                 tag = NonCardinalDirectionTag(icon, tags)
                 scene.addItem(tag)
                 self._local_direction_tags.append(tag)
 
-            room.icon = icon
-            scene.addItem(icon)
-            self._local_icons[room_hash] = icon
-
-        # draw ConnectorItems
+        # draw connectors—normal lines or doors
         for a, b in self.local_graph.edges():
-            edge = frozenset((a, b))
-            if edge in self._local_drawn_edges:
+            key = frozenset((a, b))
+            if key in self._local_drawn_edges:
                 continue
-            r1 = self.local_graph.get_room(a).icon
-            r2 = self.local_graph.get_room(b).icon
-            conn = ConnectorItem(r1, r2)
-            conn.add_to_scene(scene) if hasattr(conn, "add_to_scene") else scene.addItem(conn)
-            self._local_connectors[edge] = conn
-            self._local_drawn_edges.add(edge)
 
-        # draw BorderConnectorItems
+            attrs   = self.global_graph[a][b]
+            door_val= attrs.get("door_open", None)
+            icon_a  = self.local_graph.get_room(a).icon
+            icon_b  = self.local_graph.get_room(b).icon
+
+            if door_val is not None:
+                conn = DoorConnectorItem(icon_a, icon_b, door_open=door_val)
+            else:
+                conn = ConnectorItem(icon_a, icon_b)
+
+            conn.add_to_scene(scene)
+            self._local_connectors[key] = conn
+            self._local_drawn_edges.add(key)
+
+        # draw border arrows
         for a, b in self.global_graph.edges():
             if not self.global_graph.is_border(a, b):
                 continue
 
-            in_a = a in self._local_positions
-            in_b = b in self._local_positions
+            in_a, in_b = a in self._local_positions, b in self._local_positions
             if not (in_a or in_b):
                 continue
 
-            anchor = a if in_a else b
-            other  = b if anchor == a else a
-            icon_anchor = self.local_graph.get_room(anchor).icon
+            anchor, other = (a, b) if in_a else (b, a)
+            icon_anchor  = self.local_graph.get_room(anchor).icon
 
             if other in self._local_positions:
                 icon_other = self.local_graph.get_room(other).icon
                 arrow = BorderConnectorItem(icon_anchor, icon_b=icon_other)
             else:
-                # project one cell out
                 room    = self.global_graph.get_room(anchor)
-                dir_txt = next((d for d, dest in room.links.items() if dest == other), "")
+                dir_txt = next((d for d, dst in room.links.items() if dst == other), "")
                 base, _ = self._split_suffix(dir_txt)
                 num     = self._TXT_TO_NUM.get(base, 8)
                 dx, dy  = self._NUM_TO_DELTA[num]
                 p       = icon_anchor.scenePos()
                 target  = QPointF(p.x() + dx * GRID_SIZE,
                                   p.y() + dy * GRID_SIZE)
-                arrow = BorderConnectorItem(icon_anchor, target_pos=target)
+                arrow   = BorderConnectorItem(icon_anchor, target_pos=target)
 
-            # necessary change: store hashes for contextMenu lookup
-            arrow.a_hash = anchor
-            arrow.b_hash = other
+            # tag for right-click lookup
+            arrow.a_hash, arrow.b_hash = anchor, other
 
             arrow.add_to_scene(scene)
             self._local_border_arrows.append(arrow)
