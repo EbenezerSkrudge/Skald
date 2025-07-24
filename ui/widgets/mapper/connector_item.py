@@ -204,8 +204,7 @@ class DoorConnectorItem(ConnectorItem):
 class DoorBorderConnectorItem(QGraphicsItemGroup):
     """
     A border‐connector that draws a shortened shaft plus a centered
-    door‐rect (green=open, red=closed). The group’s local origin
-    is always the midpoint, so it never drifts.
+    door‐rect (green=open, red=closed).  Shows a cyan hover highlight.
     """
 
     def __init__(
@@ -227,60 +226,77 @@ class DoorBorderConnectorItem(QGraphicsItemGroup):
         self.door_w, self.door_h = door_size
         self.shaft_shrink = shaft_shrink
 
-        # Shaft line
+        # build our pens
+        self._normal_pen = QPen(QColor(line_color), line_width)
+        self._hover_pen  = QPen(QColor(Qt.cyan),     line_width + 1)
+
+        # 1) Shaft line
         self.line_item = QGraphicsLineItem(parent=self)
-        pen = QPen(QColor(line_color), line_width)
-        self.line_item.setPen(pen)
+        self.line_item.setPen(self._normal_pen)
         self.line_item.setZValue(Z_CONNECTOR)
 
-        # Door rectangle
+        # enable hover on the shaft and forward to the group
+        self.line_item.setAcceptHoverEvents(True)
+        self.line_item.hoverEnterEvent = lambda ev: self.hoverEnterEvent(ev)
+        self.line_item.hoverLeaveEvent = lambda ev: self.hoverLeaveEvent(ev)
+
+        # 2) Door rectangle
         self.rect_item = QGraphicsRectItem(parent=self)
-        fill_color = QColor("lime") if door_open else QColor("red")
+        fill_color   = QColor("lime") if door_open else QColor("red")
         border_color = QColor("white") if door_open else QColor("black")
         self.rect_item.setBrush(QBrush(fill_color))
         self.rect_item.setPen(QPen(border_color, 1))
         self.rect_item.setZValue(Z_ROOM_SHAPE)
 
-        # Draw once
+        # also accept hover on the group itself
+        self.setAcceptHoverEvents(True)
+        self.setZValue(Z_CONNECTOR)
+
+        # initial draw
         self.refresh()
 
     def refresh(self):
-        # 1) Calculate endpoints in scene coords
+        # endpoints
         p1 = self.icon_a.scenePos()
         p2 = self.target_pos or self.icon_b.scenePos()
 
-        # 2) Midpoint
+        # midpoint & half‐length (shrunk)
         mid = QPointF((p1.x() + p2.x()) / 2,
                       (p1.y() + p2.y()) / 2)
-
-        # 3) Distance & half-length
         dx = p2.x() - p1.x()
         dy = p2.y() - p1.y()
-        length = (dx * dx + dy * dy) ** 0.5
-        raw_half = length / 2
+        length   = (dx*dx + dy*dy)**0.5
+        half_raw = length / 2
+        half     = max(half_raw - self.shaft_shrink, 0)
 
-        # 4) Shrink shaft ends
-        half = max(raw_half - self.shaft_shrink, 0)
-
-        # 5) Position & rotate group so +X aligns with the line
-        angle = QLineF(p1, p2).angle()  # 0°=east, 90°=north
+        # orient group so +X follows the line
+        angle = QLineF(p1, p2).angle()
         self.setPos(mid)
         self.setRotation(-angle)
 
-        # 6) Draw shortened shaft from local (–half, 0) to (+half, 0)
+        # draw shortened shaft
         self.line_item.setLine(
             QLineF(QPointF(-half, 0), QPointF(+half, 0))
         )
 
-        # 7) Draw door rect centered at local origin
-        rect = QRectF(-self.door_w / 2, -self.door_h / 2,
-                      self.door_w, self.door_h)
-        self.rect_item.setRect(rect)
+        # draw door‐rect at local origin
+        r = QRectF(-self.door_w/2, -self.door_h/2,
+                   self.door_w,      self.door_h)
+        self.rect_item.setRect(r)
 
-        # 8) Rotate the door‐rect across the shaft:
-        #    closed = 90°, open = 45°
+        # rotate the door‐rect across the shaft
         door_angle = 90 if not self.door_open else 45
         self.rect_item.setRotation(door_angle)
+
+    def hoverEnterEvent(self, event):
+        # swap to the hover pen
+        self.line_item.setPen(self._hover_pen)
+        super().hoverEnterEvent(event)
+
+    def hoverLeaveEvent(self, event):
+        # back to normal
+        self.line_item.setPen(self._normal_pen)
+        super().hoverLeaveEvent(event)
 
     def add_to_scene(self, scene):
         scene.addItem(self)

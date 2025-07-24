@@ -9,7 +9,7 @@ from PySide6.QtCore import QPointF, Qt
 
 from ui.widgets.mapper.constants import GRID_SIZE
 from ui.widgets.mapper.map_controller import MapController
-from ui.widgets.mapper.connector_item import ConnectorItem, BorderConnectorItem
+from ui.widgets.mapper.connector_item import ConnectorItem, BorderConnectorItem, DoorBorderConnectorItem
 
 
 class MapperWidget(QGraphicsView):
@@ -44,47 +44,55 @@ class MapperWidget(QGraphicsView):
 
     def contextMenuEvent(self, event):
         scene_pt = self.mapToScene(event.pos())
-        items = self.scene().items(scene_pt)
+        items    = self.scene().items(scene_pt)
 
-        for it in items:
-            # — 1) normal ConnectorItem? —
-            if isinstance(it, ConnectorItem):
-                # find its edge in _local_connectors
-                for edge, conn in self.controller._local_connectors.items():
+        for raw in items:
+            it = raw
+            # unwrap if user clicked the line_item or rect_item
+            parent = getattr(it, "parentItem", lambda: None)()
+            if parent and isinstance(parent, DoorBorderConnectorItem):
+                it = parent
+
+            # 1) normal ConnectorItem (no border)
+            if isinstance(it, ConnectorItem) and not isinstance(it, (BorderConnectorItem, DoorBorderConnectorItem)):
+                # lookup edge in _local_connectors
+                for (a, b), conn in self.controller._local_connectors.items():
                     if conn is it:
-                        a_hash, b_hash = edge
                         break
                 else:
                     continue
 
-            # — 2) border arrow? —
-            elif isinstance(it, BorderConnectorItem):
-                # read the attributes we stored on creation
-                a_hash = getattr(it, "a_hash", None)
-                b_hash = getattr(it, "b_hash", None)
-                if not (a_hash and b_hash):
+            # 2) border or door‐border arrow?
+            elif isinstance(it, (BorderConnectorItem, DoorBorderConnectorItem)):
+                a = getattr(it, "a_hash", None)
+                b = getattr(it, "b_hash", None)
+                if not (a and b):
                     continue
 
             else:
-                continue  # not a connector we care about
+                # not a clickable connector
+                continue
 
-            # Normalize ordering
-            a, b = sorted((a_hash, b_hash))
+            # normalize ordering
+            a, b = sorted((a, b))
 
-            # Build menu
+            # build the menu
             is_border = self.controller.global_graph.is_border(a, b)
-            menu = QMenu(self)
-            label = "Remove Border" if is_border else "Set Border"
-            action = QAction(label, self)
-            # toggle to the opposite of current state
-            action.triggered.connect(
-                lambda _, x=a, y=b, f=not is_border: self._toggle_border(x, y, f)
-            )
+            menu      = QMenu(self)
+            if is_border:
+                action = QAction("Remove Border", self)
+                action.triggered.connect(
+                    lambda _, x=a, y=b: self._toggle_border(x, y, False)
+                )
+            else:
+                action = QAction("Set Border", self)
+                action.triggered.connect(
+                    lambda _, x=a, y=b: self._toggle_border(x, y, True)
+                )
             menu.addAction(action)
             menu.exec_(event.globalPos())
             return
 
-        # fallback if we didn’t hit a connector
         super().contextMenuEvent(event)
 
 
