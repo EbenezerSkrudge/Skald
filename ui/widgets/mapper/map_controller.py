@@ -120,20 +120,27 @@ class MapController(QObject):
         return local
 
     def _render_local_graph(self):
-        scene: QGraphicsScene = self.map.scene()
+        """
+        Clears previous items, then draws:
+         - RoomIcon + NonCardinalDirectionTag for each room
+         - ConnectorItem or DoorConnectorItem for each local edge
+         - BorderConnectorItem for plain borders
+         - DoorBorderConnectorItem for border-doors
+        """
+        scene = self.map.scene()
 
-        # clear old tags/arrows
+        # 1) clear old border‐arrows & direction‐tags
         for item in (*self._local_border_arrows, *self._local_direction_tags):
             scene.removeItem(item)
         self._local_border_arrows.clear()
         self._local_direction_tags.clear()
 
-        # clear icons
+        # 2) clear old icons
         for icon in self._local_icons.values():
             scene.removeItem(icon)
         self._local_icons.clear()
 
-        # clear connectors
+        # 3) clear old connectors (and door symbols on them)
         for conn in self._local_connectors.values():
             scene.removeItem(conn)
             if hasattr(conn, "symbol_item"):
@@ -141,12 +148,13 @@ class MapController(QObject):
         self._local_connectors.clear()
         self._local_drawn_edges.clear()
 
-        # draw rooms + non-cardinal tags
+        # 4) draw RoomIcons + NonCardinalDirectionTag
         #from ui.widgets.mapper.non_cardinal_direction_tag import NonCardinalDirectionTag
 
         for room_hash, data in self.local_graph.nodes(data=True):
             room = data["room"]
             gx, gy = self._local_positions[room_hash]
+
             icon = RoomIcon(grid_x=gx, grid_y=gy,
                             short_desc=room.desc,
                             terrain=room.terrain)
@@ -154,7 +162,7 @@ class MapController(QObject):
             scene.addItem(icon)
             self._local_icons[room_hash] = icon
 
-            # in/out or up/down arrows
+            # attach in/out & up/down tags
             dirs = [d.lower() for d, dst in room.links.items() if dst]
             tags = [d for d in dirs if d in ("in", "out", "up", "down")]
             if tags:
@@ -162,19 +170,20 @@ class MapController(QObject):
                 scene.addItem(tag)
                 self._local_direction_tags.append(tag)
 
-        # draw connectors—normal lines or doors
+        # 5) draw normal connectors & doors
         for a, b in self.local_graph.edges():
             key = frozenset((a, b))
             if key in self._local_drawn_edges:
                 continue
 
-            attrs   = self.global_graph[a][b]
-            door_val= attrs.get("door_open", None)
-            icon_a  = self.local_graph.get_room(a).icon
-            icon_b  = self.local_graph.get_room(b).icon
+            attrs = self.global_graph[a][b]
+            door_flag = attrs.get("door_open", None)
 
-            if door_val is not None:
-                conn = DoorConnectorItem(icon_a, icon_b, door_open=door_val)
+            icon_a = self.local_graph.get_room(a).icon
+            icon_b = self.local_graph.get_room(b).icon
+
+            if door_flag is not None:
+                conn = DoorConnectorItem(icon_a, icon_b, door_open=door_flag)
             else:
                 conn = ConnectorItem(icon_a, icon_b)
 
@@ -182,37 +191,58 @@ class MapController(QObject):
             self._local_connectors[key] = conn
             self._local_drawn_edges.add(key)
 
-        # draw border arrows
-        for a, b in self.global_graph.edges():
-            if not self.global_graph.is_border(a, b):
-                continue
+            # 6) draw borders & border-doors
+            from ui.widgets.mapper.connector_item import (
+                BorderConnectorItem,
+                DoorBorderConnectorItem
+            )
 
-            in_a, in_b = a in self._local_positions, b in self._local_positions
-            if not (in_a or in_b):
-                continue
+            for a, b in self.global_graph.edges():
+                if not self.global_graph.is_border(a, b):
+                    continue
 
-            anchor, other = (a, b) if in_a else (b, a)
-            icon_anchor  = self.local_graph.get_room(anchor).icon
+                in_a = a in self._local_positions
+                in_b = b in self._local_positions
+                if not (in_a or in_b):
+                    continue
 
-            if other in self._local_positions:
-                icon_other = self.local_graph.get_room(other).icon
-                arrow = BorderConnectorItem(icon_anchor, icon_b=icon_other)
-            else:
-                room    = self.global_graph.get_room(anchor)
-                dir_txt = next((d for d, dst in room.links.items() if dst == other), "")
-                base, _ = self._split_suffix(dir_txt)
-                num     = self._TXT_TO_NUM.get(base, 8)
-                dx, dy  = self._NUM_TO_DELTA[num]
-                p       = icon_anchor.scenePos()
-                target  = QPointF(p.x() + dx * GRID_SIZE,
-                                  p.y() + dy * GRID_SIZE)
-                arrow   = BorderConnectorItem(icon_anchor, target_pos=target)
+                anchor = a if in_a else b
+                other = b if anchor == a else a
+                icon_anchor = self.local_graph.get_room(anchor).icon
+                door_flag = self.global_graph[a][b].get("door_open", None)
 
-            # tag for right-click lookup
-            arrow.a_hash, arrow.b_hash = anchor, other
+                # decide endpoint references
+                if other in self._local_positions:
+                    # both ends visible
+                    icon_other = self.local_graph.get_room(other).icon
+                    kwargs = dict(icon_b=icon_other)
+                else:
+                    # project one cell away
+                    room = self.global_graph.get_room(anchor)
+                    dir_txt = next((d for d, dst in room.links.items() if dst == other), "")
+                    base, _ = self._split_suffix(dir_txt)
+                    num = self._TXT_TO_NUM.get(base, 8)
+                    dx, dy = self._NUM_TO_DELTA[num]
+                    p = icon_anchor.scenePos()
+                    target = QPointF(p.x() + dx * GRID_SIZE,
+                                     p.y() + dy * GRID_SIZE)
+                    kwargs = dict(target_pos=target)
 
-            arrow.add_to_scene(scene)
-            self._local_border_arrows.append(arrow)
+                # pick the right connector class
+                if door_flag is None:
+                    arrow = BorderConnectorItem(icon_anchor, **kwargs)
+                else:
+                    arrow = DoorBorderConnectorItem(
+                        icon_anchor,
+                        door_open=door_flag,
+                        **kwargs
+                    )
+
+                # tag for right‐click
+                arrow.a_hash, arrow.b_hash = anchor, other
+
+                arrow.add_to_scene(scene)
+                self._local_border_arrows.append(arrow)
 
     def _split_suffix(self, dir_text: str) -> tuple[str, str | None]:
         txt = dir_text.lower()

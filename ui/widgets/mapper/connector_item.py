@@ -201,6 +201,91 @@ class DoorConnectorItem(ConnectorItem):
         self.symbol_item.setTransform(xf)
 
 
+class DoorBorderConnectorItem(QGraphicsItemGroup):
+    """
+    A border‐connector that draws a shortened shaft plus a centered
+    door‐rect (green=open, red=closed). The group’s local origin
+    is always the midpoint, so it never drifts.
+    """
+
+    def __init__(
+        self,
+        icon_a,
+        icon_b=None,
+        target_pos: QPointF = None,
+        door_open: bool = True,
+        line_color=Qt.yellow,
+        line_width=6,
+        door_size=(30, 6),
+        shaft_shrink: float = 20.0
+    ):
+        super().__init__()
+        self.icon_a       = icon_a
+        self.icon_b       = icon_b
+        self.target_pos   = target_pos
+        self.door_open    = door_open
+        self.door_w, self.door_h = door_size
+        self.shaft_shrink = shaft_shrink
+
+        # Shaft line
+        self.line_item = QGraphicsLineItem(parent=self)
+        pen = QPen(QColor(line_color), line_width)
+        self.line_item.setPen(pen)
+        self.line_item.setZValue(Z_CONNECTOR)
+
+        # Door rectangle
+        self.rect_item = QGraphicsRectItem(parent=self)
+        fill_color = QColor("lime") if door_open else QColor("red")
+        border_color = QColor("white") if door_open else QColor("black")
+        self.rect_item.setBrush(QBrush(fill_color))
+        self.rect_item.setPen(QPen(border_color, 1))
+        self.rect_item.setZValue(Z_ROOM_SHAPE)
+
+        # Draw once
+        self.refresh()
+
+    def refresh(self):
+        # 1) Calculate endpoints in scene coords
+        p1 = self.icon_a.scenePos()
+        p2 = self.target_pos or self.icon_b.scenePos()
+
+        # 2) Midpoint
+        mid = QPointF((p1.x() + p2.x()) / 2,
+                      (p1.y() + p2.y()) / 2)
+
+        # 3) Distance & half-length
+        dx = p2.x() - p1.x()
+        dy = p2.y() - p1.y()
+        length = (dx * dx + dy * dy) ** 0.5
+        raw_half = length / 2
+
+        # 4) Shrink shaft ends
+        half = max(raw_half - self.shaft_shrink, 0)
+
+        # 5) Position & rotate group so +X aligns with the line
+        angle = QLineF(p1, p2).angle()  # 0°=east, 90°=north
+        self.setPos(mid)
+        self.setRotation(-angle)
+
+        # 6) Draw shortened shaft from local (–half, 0) to (+half, 0)
+        self.line_item.setLine(
+            QLineF(QPointF(-half, 0), QPointF(+half, 0))
+        )
+
+        # 7) Draw door rect centered at local origin
+        rect = QRectF(-self.door_w / 2, -self.door_h / 2,
+                      self.door_w, self.door_h)
+        self.rect_item.setRect(rect)
+
+        # 8) Rotate the door‐rect across the shaft:
+        #    closed = 90°, open = 45°
+        door_angle = 90 if not self.door_open else 45
+        self.rect_item.setRotation(door_angle)
+
+    def add_to_scene(self, scene):
+        scene.addItem(self)
+
+
 class NonCardinalDirectionTag(QGraphicsItemGroup):
     """
     Renders in/out or up/down arrows around an icon.
