@@ -92,7 +92,7 @@ class MainWindow(QMainWindow):
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(0)
 
-        self.mapper = MapperWidget()
+        self.mapper = MapperWidget(profile_path=self.app.profile_path)
         right_layout.addWidget(self.mapper)
 
         self.app.register_event_handler("on_location_update", self.mapper.controller.on_room_info)

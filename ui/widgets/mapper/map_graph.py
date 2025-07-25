@@ -1,6 +1,9 @@
 # ui/widgets/mapper/map_graph.py
 
 import collections
+import pickle
+from pathlib import Path
+
 import networkx as nx
 from ui.widgets.mapper.room import Room
 
@@ -129,3 +132,12 @@ class MapGraph(nx.Graph):
                 queue.append(neighbor)
 
         return positions
+
+    def save_to_file(self, path: str | Path):
+        with open(path, "wb") as f:
+            pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+    @staticmethod
+    def load_from_file(path: str | Path) -> "MapGraph":
+        with open(path, "rb") as f:
+            return pickle.load(f)

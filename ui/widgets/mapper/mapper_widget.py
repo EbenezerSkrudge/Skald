@@ -14,7 +14,7 @@ from ui.widgets.mapper.connector_item import (
 
 
 class MapperWidget(QGraphicsView):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, profile_path=None):
         super().__init__(parent)
 
         self._scene = QGraphicsScene(self)
@@ -28,7 +28,7 @@ class MapperWidget(QGraphicsView):
         self._zoom = 0
         self._shift_held = False
 
-        self.controller = MapController(self)
+        self.controller = MapController(self, profile_path=profile_path)
         self._scene.controller = self.controller
 
         self._setup_area_label()

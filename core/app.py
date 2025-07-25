@@ -1,30 +1,30 @@
 # core/app.py
 
+import cProfile
 import logging
-from pathlib    import Path
-from typing     import Optional
-
+from pathlib import Path
+from typing import Optional
 import json
 
 from PySide6.QtWidgets import QApplication
 
-from core.alias_manager     import AliasManager
-from core.connection        import MudConnection
-from core.config            import HOST, PORT
-from core.db                import init_db
-from core.settings          import load_settings
-from core.script_manager    import ScriptManager
-from core.signals           import signals
-from core.timer_manager     import TimerManager
-from core.trigger_manager   import TriggerManager
-from core.system_triggers   import register_system_triggers
+from core.alias_manager import AliasManager
+from core.connection import MudConnection
+from core.config import HOST, PORT
+from core.db import init_db
+from core.settings import load_settings
+from core.script_manager import ScriptManager
+from core.signals import signals
+from core.timer_manager import TimerManager
+from core.trigger_manager import TriggerManager
+from core.system_triggers import register_system_triggers
 from ui.keymap import KeyMapper
 
-from ui.windows.profile_manager     import ProfileManager
-from ui.windows.main_window         import MainWindow
+from ui.windows.profile_manager import ProfileManager
+from ui.windows.main_window import MainWindow
 
 logging.basicConfig(
-    level=logging.WARNING,
+    level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
 log = logging.getLogger(__name__)
@@ -52,14 +52,16 @@ class App:
         self.connection = MudConnection()
         self.main_window: Optional[MainWindow] = None
 
-        self.alias_manager      = None
-        self.timer_manager      = None
-        self.trigger_manager    = None
-        self.script_manager     = None
+        self.alias_manager = None
+        self.timer_manager = None
+        self.trigger_manager = None
+        self.script_manager = None
 
         self.gmcp_data = {}
 
         self._event_handlers: dict[str, list] = {}
+
+        self.global_graph = None  # MapGraph instance will be stored here
 
         self._init_connection_events()
         signals.on_login.connect(self._on_login)

@@ -1,6 +1,9 @@
 # ui/widgets/mapper/map_controller.py
 
 import math
+import os
+import pickle
+
 from PySide6.QtCore import QObject, Signal, QPointF
 from PySide6.QtWidgets import QGraphicsScene
 
@@ -12,6 +15,8 @@ from ui.widgets.mapper.connector_item import (
 )
 from ui.widgets.mapper.map_graph import MapGraph
 from ui.widgets.mapper.constants import GRID_SIZE
+
+from PySide6.QtCore import QTimer
 
 
 class MapController(QObject):
@@ -29,10 +34,18 @@ class MapController(QObject):
         7: (-1, -1), 8: (0, -1), 9: (+1, -1),
     }
 
-    def __init__(self, mapper_widget):
+    def __init__(self, mapper_widget, profile_path: str = None):
         super().__init__()
         self.map = mapper_widget
-        self.global_graph = MapGraph()
+        self.profile_path = profile_path or os.path.expanduser("~/.skald/default")
+        self.map_file_path = os.path.join(self.profile_path, "map.pickle")
+
+        # Debounce timer for saving
+        self._save_timer = QTimer()
+        self._save_timer.setSingleShot(True)
+        self._save_timer.timeout.connect(self.save_map)
+
+        self.global_graph = self._load_map() or MapGraph()
         self.local_graph = MapGraph()
         self._local_positions = {}
         self._cur_hash = None
@@ -44,6 +57,26 @@ class MapController(QObject):
         self._local_direction_tags = []
         self._marker = None
         self._prev_links = {}
+
+    def save_map(self):
+        try:
+            os.makedirs(self.profile_path, exist_ok=True)
+            temp_path = self.map_file_path + ".tmp"
+            with open(temp_path, "wb") as f:
+                pickle.dump(self.global_graph, f, protocol=pickle.HIGHEST_PROTOCOL)
+            os.replace(temp_path, self.map_file_path)  # Atomic on most platforms
+        except Exception as e:
+            print(f"Error saving map: {e}")
+
+    def _load_map(self) -> MapGraph | None:
+        print(self.map_file_path)
+        if os.path.exists(self.map_file_path):
+            try:
+                with open(self.map_file_path, "rb") as f:
+                    return pickle.load(f)
+            except Exception as e:
+                print(f"Error loading map: {e}")
+        return None
 
     def on_room_info(self, info: dict):
         room_hash = info.get("hash")
@@ -74,6 +107,11 @@ class MapController(QObject):
 
         self._render_local_graph()
         self.mapUpdated.emit()
+
+        self.schedule_save()
+
+    def schedule_save(self):
+        self._save_timer.start(1000)  # Save 1s after last move
 
     def _calculate_move_code(self, prev_hash, current_hash):
         if not prev_hash:
@@ -130,7 +168,6 @@ class MapController(QObject):
             room = data["room"]
             gx, gy = self._local_positions[room_hash]
             icon = RoomIcon(grid_x=gx, grid_y=gy, short_desc=room.desc, terrain=room.terrain)
-            room.icon = icon
             scene.addItem(icon)
             self._local_icons[room_hash] = icon
 
@@ -148,10 +185,13 @@ class MapController(QObject):
 
             attrs = self.global_graph[a][b]
             door_flag = attrs.get("door_open")
-            icon_a = self.local_graph.get_room(a).icon
-            icon_b = self.local_graph.get_room(b).icon
+            icon_a = self._local_icons.get(a)
+            icon_b = self._local_icons.get(b)
+            if not icon_a or not icon_b:
+                continue
 
-            conn = DoorConnectorItem(icon_a, icon_b, door_open=door_flag) if door_flag is not None else ConnectorItem(icon_a, icon_b)
+            conn = DoorConnectorItem(icon_a, icon_b, door_open=door_flag) if door_flag is not None else ConnectorItem(
+                icon_a, icon_b)
             conn.add_to_scene(scene)
 
             self._local_connectors[key] = conn
@@ -166,11 +206,16 @@ class MapController(QObject):
 
             anchor = a if a in self._local_positions else b
             other = b if anchor == a else a
-            icon_anchor = self.global_graph.get_room(anchor).icon
+            icon_anchor = self._local_icons.get(anchor)
+            if not icon_anchor:
+                continue
+
             door_flag = self.global_graph[a][b].get("door_open")
 
             if other in self._local_positions:
-                icon_other = self.global_graph.get_room(other).icon
+                icon_other = self._local_icons.get(other)
+                if not icon_other:
+                    continue
                 kwargs = dict(icon_b=icon_other)
             else:
                 dir_txt = next((d for d, dst in self.global_graph.get_room(anchor).links.items() if dst == other), "")
@@ -180,7 +225,8 @@ class MapController(QObject):
                 kwargs = dict(target_pos=QPointF(pos.x() + dx * GRID_SIZE, pos.y() + dy * GRID_SIZE))
 
             connector_cls = DoorBorderConnectorItem if door_flag is not None else BorderConnectorItem
-            arrow = connector_cls(icon_anchor, door_open=door_flag, **kwargs) if door_flag is not None else connector_cls(icon_anchor, **kwargs)
+            arrow = connector_cls(icon_anchor, door_open=door_flag,
+                                  **kwargs) if door_flag is not None else connector_cls(icon_anchor, **kwargs)
             arrow.a_hash, arrow.b_hash = anchor, other
             arrow.add_to_scene(scene)
             self._local_border_arrows.append(arrow)

@@ -8,6 +8,8 @@ from PySide6.QtGui import QBrush, QPen, QColor, Qt
 from PySide6.QtCore import QPointF
 
 from ui.widgets.mapper.constants import Z_ROOM_SHAPE, Z_ROOM_ICON, GRID_SIZE, ROOM_SIZE
+from ui.widgets.mapper.utils import get_terrain_color, get_bold_font
+
 from game.terrain import TERRAIN_TYPES
 
 
@@ -33,7 +35,7 @@ class RoomIcon(QGraphicsItemGroup):
 
     def _create_background(self):
         half = self.size / 2
-        color = QColor(TERRAIN_TYPES.get(self.terrain, ("?", "#555"))[1])
+        color = get_terrain_color(self.terrain)
 
         if self.terrain == "unexplored":
             item = QGraphicsEllipseItem(-half, -half, self.size, self.size)
@@ -48,10 +50,7 @@ class RoomIcon(QGraphicsItemGroup):
 
     def _create_question_mark(self):
         txt = QGraphicsTextItem("?")
-        font = txt.font()
-        font.setPointSizeF(self.size * 0.5)
-        font.setBold(True)
-        txt.setFont(font)
+        txt.setFont(get_bold_font(self.size * 0.5))
         txt.setDefaultTextColor(Qt.gray)
 
         br = txt.boundingRect()
@@ -80,3 +79,4 @@ class RoomIcon(QGraphicsItemGroup):
         if change == QGraphicsItem.ItemSelectedHasChanged:
             self.overlay.setVisible(bool(value))
         return super().itemChange(change, value)
+

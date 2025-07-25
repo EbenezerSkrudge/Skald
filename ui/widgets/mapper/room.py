@@ -1,24 +1,24 @@
 # core/mapper/room.py
 
 class Room:
+    __slots__ = ("hash", "desc", "terrain", "links", "icon", "graph_ref", "grid_x", "grid_y")
+
     def __init__(self, info: dict):
-        self.hash      = info.get("hash")
-        self.desc      = info.get("short", "no description")
-        self.terrain   = info.get("type", "unexplored")
-        self.links     = info.get("links", {})  # direction → hash
-
-        self.icon      = None  # QGraphicsItem
-        self.graph_ref = None  # MapGraph
-
-    def __repr__(self):
-        return f"<Room {self.hash}: {self.desc}>"
+        self.hash       = info.get("hash")
+        self.desc       = info.get("short", "no description")
+        self.terrain    = info.get("type", "unexplored")
+        self.links      = info.get("links", {})
+        self.icon       = None  # QGraphicsItem reference
+        self.graph_ref  = None  # Optional reference to MapGraph
+        self.grid_x     = 0
+        self.grid_y     = 0
 
     @property
     def explored(self) -> bool:
         return self.terrain != "unexplored"
 
     def update_from_gmcp(self, info: dict):
-        """Update room details from a GMCP packet."""
+        """Refresh room details from a new GMCP packet."""
         self.desc    = info.get("short", self.desc)
         self.terrain = info.get("type", self.terrain)
         self.links   = info.get("links", self.links)
@@ -29,5 +29,25 @@ class Room:
             self.icon.refresh()
 
     def direction_to(self, other: 'Room') -> str | None:
-        """Return direction to the given room, if known."""
-        return next((d for d, h in self.links.items() if h == other.hash), None)
+        """Returns the direction name from this room to another, if known."""
+        for dir_name, dest_hash in self.links.items():
+            if dest_hash == other.hash:
+                return dir_name
+        return None
+
+    def to_dict(self) -> dict:
+        return {
+            "hash": self.hash,
+            "short": self.desc,
+            "type": self.terrain,
+            "links": self.links,
+            "grid_x": getattr(self, "grid_x", None),
+            "grid_y": getattr(self, "grid_y", None),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'Room':
+        room = cls(data)
+        room.grid_x = data.get("grid_x")
+        room.grid_y = data.get("grid_y")
+        return room
