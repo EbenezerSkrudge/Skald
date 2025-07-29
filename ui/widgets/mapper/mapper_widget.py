@@ -7,9 +7,8 @@ from PySide6.QtWidgets import (
     QGraphicsScene, QGraphicsView, QLabel, QInputDialog, QMenu
 )
 
-from ui.widgets.mapper.connector_item import (
-    ConnectorItem, BorderConnectorItem
-)
+from ui.widgets.mapper.connectors.border_connector_item import BorderConnectorItem
+from ui.widgets.mapper.connectors.connector_item import ConnectorItem
 from ui.widgets.mapper.constants import GRID_SIZE
 from ui.widgets.mapper.map_controller import MapController
 

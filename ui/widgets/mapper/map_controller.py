@@ -7,10 +7,11 @@ from PySide6.QtCore import QObject, Signal, QPointF
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QGraphicsScene
 
-from ui.widgets.mapper.connector_item import (
-    ConnectorItem, DoorConnectorItem, BorderConnectorItem,
-    DoorBorderConnectorItem, NonCardinalDirectionTag
-)
+from ui.widgets.mapper.connectors.non_cardinal_direction_tag import NonCardinalDirectionTag
+from ui.widgets.mapper.connectors.door_border_connector_item import DoorBorderConnectorItem
+from ui.widgets.mapper.connectors.door_connector_item import DoorConnectorItem
+from ui.widgets.mapper.connectors.border_connector_item import BorderConnectorItem
+from ui.widgets.mapper.connectors.connector_item import ConnectorItem
 from ui.widgets.mapper.constants import GRID_SIZE
 from ui.widgets.mapper.location_widget import LocationWidget
 from ui.widgets.mapper.map_graph import MapGraph

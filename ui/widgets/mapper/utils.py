@@ -82,3 +82,7 @@ def split_suffix(dir_text: str) -> tuple[str, str | None]:
     if txt.endswith("down"):
         return txt[:-4], "down"
     return txt, None
+
+
+def midpoint(p1: QPointF, p2: QPointF) -> QPointF:
+    return QPointF((p1.x() + p2.x()) / 2, (p1.y() + p2.y()) / 2)
