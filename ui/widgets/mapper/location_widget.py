@@ -9,17 +9,11 @@ from PySide6.QtWidgets import (
     QGraphicsPolygonItem, QGraphicsDropShadowEffect
 )
 
-from ui.widgets.mapper.constants import GRID_SIZE, Z_ROOM_ICON
+from ui.widgets.mapper.constants import GRID_SIZE, Z_ROOM_ICON, NUM_TO_DELTA
 
 
 class LocationWidget(QGraphicsItemGroup):
     """Displays the player location as a circle with an optional directional arrow."""
-
-    _DIRECTIONS = {
-        1: (-1, 1), 2: (0, 1), 3: (1, 1),
-        4: (-1, 0), 6: (1, 0),
-        7: (-1, -1), 8: (0, -1), 9: (1, -1),
-    }
 
     def __init__(self, grid_x, grid_y, direction_code=None,
                  radius=16, arrow_length=8, arrow_width=8):
@@ -69,7 +63,7 @@ class LocationWidget(QGraphicsItemGroup):
 
     def update_direction(self, code):
         """Updates the arrow to point in the direction represented by `code`."""
-        direction = self._DIRECTIONS.get(code)
+        direction = NUM_TO_DELTA.get(code)
         if not direction:
             self.arrow.setVisible(False)
             return

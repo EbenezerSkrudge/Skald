@@ -12,7 +12,7 @@ from ui.widgets.mapper.connectors.door_border_connector_item import DoorBorderCo
 from ui.widgets.mapper.connectors.door_connector_item import DoorConnectorItem
 from ui.widgets.mapper.connectors.border_connector_item import BorderConnectorItem
 from ui.widgets.mapper.connectors.connector_item import ConnectorItem
-from ui.widgets.mapper.constants import GRID_SIZE
+from ui.widgets.mapper.constants import GRID_SIZE, TEXT_TO_NUM, NUM_TO_DELTA
 from ui.widgets.mapper.location_widget import LocationWidget
 from ui.widgets.mapper.map_graph import MapGraph
 from ui.widgets.mapper.room_icon import RoomIcon
@@ -21,18 +21,6 @@ from ui.widgets.mapper.utils import split_suffix
 
 class MapController(QObject):
     mapUpdated = Signal()
-
-    _TXT_TO_NUM = {
-        "northwest": 7, "north": 8, "northeast": 9,
-        "west": 4, "east": 6,
-        "southwest": 1, "south": 2, "southeast": 3,
-    }
-
-    _NUM_TO_DELTA = {
-        1: (-1, +1), 2: (0, +1), 3: (+1, +1),
-        4: (-1, 0), 6: (+1, 0),
-        7: (-1, -1), 8: (0, -1), 9: (+1, -1),
-    }
 
     def __init__(self, mapper_widget, profile_path: str = None):
         super().__init__()
@@ -119,7 +107,7 @@ class MapController(QObject):
         movement_direction = next((d for d, dest in self._prev_links.items() if dest == current_hash), None)
         if movement_direction:
             base, _ = split_suffix(movement_direction)
-            return self._TXT_TO_NUM.get(base)
+            return TEXT_TO_NUM.get(base)
         return None
 
     def build_local_area(self) -> MapGraph:
@@ -220,7 +208,7 @@ class MapController(QObject):
             else:
                 dir_txt = next((d for d, dst in self.global_graph.get_room(anchor).links.items() if dst == other), "")
                 base, _ = split_suffix(dir_txt)
-                dx, dy = self._NUM_TO_DELTA.get(self._TXT_TO_NUM.get(base, 8), (0, -1))
+                dx, dy = NUM_TO_DELTA.get(TEXT_TO_NUM.get(base, 8), (0, -1))
                 pos = icon_anchor.scenePos()
                 kwargs = dict(target_pos=QPointF(pos.x() + dx * GRID_SIZE, pos.y() + dy * GRID_SIZE))
 

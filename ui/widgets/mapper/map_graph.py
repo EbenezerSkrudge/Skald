@@ -6,13 +6,8 @@ from pathlib import Path
 
 import networkx as nx
 
+from ui.widgets.mapper.constants import TEXT_TO_DELTA
 from ui.widgets.mapper.room import Room
-
-_TXT_TO_DELTA = {
-    "northwest": (-1, -1), "north": (0, -1), "northeast": (1, -1),
-    "west": (-1, 0), "east": (1, 0),
-    "southwest": (-1, 1), "south": (0, 1), "southeast": (1, 1),
-}
 
 
 def _strip_vertical_suffix(direction: str) -> str:
@@ -118,7 +113,7 @@ class MapGraph(nx.Graph):
                 if self.is_border(current, neighbor):
                     continue
 
-                delta = _TXT_TO_DELTA.get(_strip_vertical_suffix(dir_txt))
+                delta = TEXT_TO_DELTA.get(_strip_vertical_suffix(dir_txt))
                 if not delta:
                     continue
 
