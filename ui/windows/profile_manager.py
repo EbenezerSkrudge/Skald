@@ -3,16 +3,16 @@
 import shutil
 from pathlib import Path
 
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QWidget, QListWidget, QPushButton, QVBoxLayout, QHBoxLayout,
     QLineEdit, QMessageBox
 )
-from PySide6.QtCore import Signal
 
 from core.config import PROFILE_BASE_PATH
-from core.utils import is_valid_profile
-from core.settings import save_settings
 from core.db import init_db
+from core.settings import save_settings
+from core.utils import is_valid_profile
 
 
 def remove_path(path: Path):

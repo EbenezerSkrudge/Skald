@@ -1,21 +1,22 @@
 # core/widgets/code_editor.py
 
-from PySide6.QtWidgets import QWidget, QPlainTextEdit, QVBoxLayout, QTextEdit
+from PySide6.QtCore import Qt, QRect, QSize, QRegularExpression
 from PySide6.QtGui import QFontDatabase, QFont, QColor, QPainter, QTextFormat, QSyntaxHighlighter, QTextCharFormat, \
     QTextCursor
-from PySide6.QtCore import Qt, QRect, QSize, QRegularExpression
+from PySide6.QtWidgets import QWidget, QPlainTextEdit, QVBoxLayout, QTextEdit
 
 
 class LineNumberArea(QWidget):
     def __init__(self, editor):
         super().__init__(editor)
-        self.editor_widget= editor
+        self.editor_widget = editor
 
     def sizeHint(self):
         return QSize(self.editor_widget.line_number_width(), 0)
 
     def paintEvent(self, event):
         self.editor_widget.paint_line_numbers(event)
+
 
 class PythonHighlighter(QSyntaxHighlighter):
     def __init__(self, document):
@@ -39,122 +40,135 @@ class PythonHighlighter(QSyntaxHighlighter):
             QRegularExpression(r'"""[^"]*"""')
         ]
         self.fstring_pattern = QRegularExpression(r'''(?<!\w)[fF](['"])(.*?)(\1)''')
-        self.fexpr_pattern   = QRegularExpression(r"{[^{}]+}")
+        self.fexpr_pattern = QRegularExpression(r"{[^{}]+}")
 
         # ── Syntax rules (keywords, builtins, constants, ints, decorators, comments) ──
         self.rules = []
 
         # Keywords (blue + bold)
-        kw_fmt = QTextCharFormat(); kw_fmt.setForeground(QColor("#4444CC")); kw_fmt.setFontWeight(QFont.Bold)
+        keyword_format = QTextCharFormat()
+        keyword_format.setForeground(QColor("#4444CC"))
+        keyword_format.setFontWeight(QFont.Bold)
         keywords = [
-            "and","as","assert","async","await","break","class","continue","def","del","elif","else",
-            "except","finally","for","from","global","if","import","in","is","lambda","nonlocal",
-            "not","or","pass","raise","return","try","while","with","yield"
+            "and", "as", "assert", "async", "await", "break", "class", "continue", "def", "del", "elif", "else",
+            "except", "finally", "for", "from", "global", "if", "import", "in", "is", "lambda", "nonlocal",
+            "not", "or", "pass", "raise", "return", "try", "while", "with", "yield"
         ]
-        for kw in keywords:
-            self.rules.append((QRegularExpression(rf"\b{kw}\b"), kw_fmt))
+        for keyword in keywords:
+            self.rules.append((QRegularExpression(rf"\b{keyword}\b"), keyword_format))
 
         # Built-in functions (same blue + bold)
-        bi_fmt = QTextCharFormat(); bi_fmt.setForeground(QColor("#4444CC")); bi_fmt.setFontWeight(QFont.Bold)
+        builtin_format = QTextCharFormat()
+        builtin_format.setForeground(QColor("#4444CC"))
+        builtin_format.setFontWeight(QFont.Bold)
         builtins = [
-            "abs","all","any","bin","bool","bytes","chr","complex","dict","dir","divmod",
-            "enumerate","eval","filter","float","format","getattr","hasattr","hash","hex","id",
-            "input","int","isinstance","issubclass","iter","len","list","map","max","min","next",
-            "object","oct","open","ord","pow","print","range","repr","reversed","round","set",
-            "slice","sorted","str","sum","tuple","type","vars","zip"
+            "abs", "all", "any", "bin", "bool", "bytes", "chr", "complex", "dict", "dir", "divmod",
+            "enumerate", "eval", "filter", "float", "format", "getattr", "hasattr", "hash", "hex", "id",
+            "input", "int", "isinstance", "issubclass", "iter", "len", "list", "map", "max", "min", "next",
+            "object", "oct", "open", "ord", "pow", "print", "range", "repr", "reversed", "round", "set",
+            "slice", "sorted", "str", "sum", "tuple", "type", "vars", "zip"
         ]
-        for fn in builtins:
-            self.rules.append((QRegularExpression(rf"\b{fn}\b"), bi_fmt))
+        for builtin_function in builtins:
+            self.rules.append((QRegularExpression(rf"\b{builtin_function}\b"), builtin_format))
 
         # Constants (italic purple)
-        const_fmt = QTextCharFormat(); const_fmt.setForeground(QColor("#CC44CC")); const_fmt.setFontItalic(True)
-        for c in ("True","False","None"):
-            self.rules.append((QRegularExpression(rf"\b{c}\b"), const_fmt))
+        constant_format = QTextCharFormat()
+        constant_format.setForeground(QColor("#CC44CC"))
+        constant_format.setFontItalic(True)
+        for c in ("True", "False", "None"):
+            self.rules.append((QRegularExpression(rf"\b{c}\b"), constant_format))
 
         # Integers (purple)
-        int_fmt = QTextCharFormat(); int_fmt.setForeground(QColor("#CC44CC"))
-        int_pat = QRegularExpression(r"\b[-+]?(0[xX][\da-fA-F]+|0[bB][01]+|\d+)\b")
-        self.rules.append((int_pat, int_fmt))
+        int_format = QTextCharFormat()
+        int_format.setForeground(QColor("#CC44CC"))
+        int_pattern = QRegularExpression(r"\b[-+]?(0[xX][\da-fA-F]+|0[bB][01]+|\d+)\b")
+        self.rules.append((int_pattern, int_format))
 
         # Decorators (italic pink-ish)
-        dec_fmt = QTextCharFormat(); dec_fmt.setForeground(QColor("#EE44CC")); dec_fmt.setFontItalic(True)
-        dec_pat = QRegularExpression(r"@\w+(\.\w+)*")
-        self.rules.append((dec_pat, dec_fmt))
+        decorator_format = QTextCharFormat()
+        decorator_format.setForeground(QColor("#EE44CC"))
+        decorator_format.setFontItalic(True)
+        decorator_pattern = QRegularExpression(r"@\w+(\.\w+)*")
+        self.rules.append((decorator_pattern, decorator_format))
 
         # Comments (gray italic)
-        com_fmt = QTextCharFormat(); com_fmt.setForeground(QColor("#888888")); com_fmt.setFontItalic(True)
-        com_pat = QRegularExpression(r"#.*")
-        self.rules.append((com_pat, com_fmt))
+        comment_format = QTextCharFormat()
+        comment_format.setForeground(QColor("#888888"))
+        comment_format.setFontItalic(True)
+        comment_pattern = QRegularExpression(r"#.*")
+        self.rules.append((comment_pattern, comment_format))
 
     def highlightBlock(self, text):
         # ── Pass 1: normal strings ─────────────────────────────
         string_ranges = []
-        for pat in self.string_patterns:
-            it = pat.globalMatch(text)
-            while it.hasNext():
-                m = it.next()
-                s, l = m.capturedStart(), m.capturedLength()
-                self.setFormat(s, l, self.str_format)
-                string_ranges.append((s, s + l))
+        for regex_pattern in self.string_patterns:
+            match_iterator = regex_pattern.globalMatch(text)
+            while match_iterator.hasNext():
+                matched_text = match_iterator.next()
+                match_start_index, match_length = matched_text.capturedStart(), matched_text.capturedLength()
+                self.setFormat(match_start_index, match_length, self.str_format)
+                string_ranges.append((match_start_index, match_start_index + match_length))
 
-        def in_string(pos):
-            return any(s <= pos < e for s, e in string_ranges)
+        def in_string(position):
+            return any(start_position <= position < end_position for start_position, end_position in string_ranges)
 
         # ── Pass 2: f-string containers ───────────────────────
         fstring_ranges = []
-        fit = self.fstring_pattern.globalMatch(text)
-        while fit.hasNext():
-            m = fit.next()
-            s, l = m.capturedStart(), m.capturedLength()
-            self.setFormat(s, l, self.fstring_format)
-            fstring_ranges.append((s, s + l))
+        fstring_matches = self.fstring_pattern.globalMatch(text)
+        while fstring_matches.hasNext():
+            matched_text = fstring_matches.next()
+            match_start_index, match_length = matched_text.capturedStart(), matched_text.capturedLength()
+            self.setFormat(match_start_index, match_length, self.fstring_format)
+            fstring_ranges.append((match_start_index, match_start_index + match_length))
 
         # ── Pass 3: other rules outside normal strings ────────
-        for pat, fmt in self.rules:
-            it = pat.globalMatch(text)
-            while it.hasNext():
-                m = it.next()
-                s, l = m.capturedStart(), m.capturedLength()
-                if not in_string(s):
-                    self.setFormat(s, l, fmt)
+        for regex_pattern, formatting_style in self.rules:
+            match_iterator = regex_pattern.globalMatch(text)
+            while match_iterator.hasNext():
+                matched_text = match_iterator.next()
+                match_start_index, match_length = matched_text.capturedStart(), matched_text.capturedLength()
+                if not in_string(match_start_index):
+                    self.setFormat(match_start_index, match_length, formatting_style)
 
         # ── Pass 4: override {…} in f-strings ─────────────────
         for f_start, f_end in fstring_ranges:
             segment = text[f_start:f_end]
             inner = self.fexpr_pattern.globalMatch(segment)
             while inner.hasNext():
-                m = inner.next()
-                s = f_start + m.capturedStart()
-                l = m.capturedLength()
-                self.setFormat(s, l, self.fexpr_format)
+                matched_text = inner.next()
+                match_start_index = f_start + matched_text.capturedStart()
+                match_length = matched_text.capturedLength()
+                self.setFormat(match_start_index, match_length, self.fexpr_format)
 
         # ── Pass 5: unmatched brackets & quotes ───────────────
-        err_fmt = QTextCharFormat(); err_fmt.setForeground(QColor("#FF3333")); err_fmt.setFontUnderline(True)
+        error_format = QTextCharFormat()
+        error_format.setForeground(QColor("#FF3333"))
+        error_format.setFontUnderline(True)
         stack = []
-        pairs = {"(":")","[":"]","{":"}"}
+        pairs = {"(": ")", "[": "]", "{": "}"}
         quote_state = {"'": False, '"': False}
 
-        for i, ch in enumerate(text):
-            if ch in quote_state:
-                if ch == "'" and i>0 and text[i-1].isalnum():
+        for i, current_token in enumerate(text):
+            if current_token in quote_state:
+                if current_token == "'" and i > 0 and text[i - 1].isalnum():
                     continue
-                quote_state[ch] = not quote_state[ch]
-            elif ch in pairs:
-                stack.append((ch, i))
-            elif ch in pairs.values():
-                if stack and pairs[stack[-1][0]] == ch:
+                quote_state[current_token] = not quote_state[current_token]
+            elif current_token in pairs:
+                stack.append((current_token, i))
+            elif current_token in pairs.values():
+                if stack and pairs[stack[-1][0]] == current_token:
                     stack.pop()
                 else:
-                    self.setFormat(i, 1, err_fmt)
+                    self.setFormat(i, 1, error_format)
 
         for _, idx in stack:
-            self.setFormat(idx, 1, err_fmt)
+            self.setFormat(idx, 1, error_format)
 
         for q, open_ in quote_state.items():
             if open_:
                 idx = text.rfind(q)
                 if idx != -1:
-                    self.setFormat(idx, 1, err_fmt)
+                    self.setFormat(idx, 1, error_format)
 
 
 class CodeTextEdit(QPlainTextEdit):
@@ -166,9 +180,9 @@ class CodeTextEdit(QPlainTextEdit):
 
             # 1. Get current indentation
             indent = ""
-            for ch in block_text:
-                if ch in " \t":
-                    indent += ch
+            for current_char in block_text:
+                if current_char in " \t":
+                    indent += current_char
                 else:
                     break
 
@@ -272,9 +286,9 @@ class CodeEditor(QWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        cr = self.editor.contentsRect()
+        content_rect = self.editor.contentsRect()
         self.line_area.setGeometry(
-            QRect(cr.left(), cr.top(), self.line_number_width(), cr.height()))
+            QRect(content_rect.left(), content_rect.top(), self.line_number_width(), content_rect.height()))
 
     def set_text(self, text: str):
         self.editor.setPlainText(text)
@@ -291,4 +305,3 @@ class CodeEditor(QWidget):
         This makes CodeEditor.clear() valid for calling code.
         """
         self.editor.clear()
-

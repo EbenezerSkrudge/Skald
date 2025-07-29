@@ -1,11 +1,11 @@
 # ui/widgets/console/input_bar.py
 
-from PySide6.QtWidgets import QTextEdit, QSplitter, QWidget, QVBoxLayout
-from PySide6.QtCore import Qt, QTimer, QEvent, QPoint
+from PySide6.QtCore import Qt, QTimer, QEvent
 from PySide6.QtGui import QTextCursor, QKeyEvent, QShortcut, QKeySequence
+from PySide6.QtWidgets import QTextEdit, QSplitter, QWidget, QVBoxLayout
 
-from ui.style import get_mono_font
 from core.config import FREEZE_PANE_MIN_HEIGHT
+from ui.style import get_mono_font
 
 
 class SplitConsoleDisplay(QWidget):
@@ -167,7 +167,7 @@ class SplitConsoleDisplay(QWidget):
                         vsb.setValue(vsb.value() + line_h)
                         phantom = line_h
                         thresh = vsb.maximum() - (
-                            self.live_view.height() + phantom
+                                self.live_view.height() + phantom
                         )
                         if vsb.value() >= thresh:
                             self._user_has_scrolled = False

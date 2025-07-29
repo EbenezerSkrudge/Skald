@@ -1,30 +1,28 @@
 # core/app.py
 
-import cProfile
+import json
 import logging
 from pathlib import Path
 from typing import Optional
-import json
 
 from PySide6.QtWidgets import QApplication
 
 from core.alias_manager import AliasManager
-from core.connection import MudConnection
 from core.config import HOST, PORT
+from core.connection import MudConnection
 from core.db import init_db
-from core.settings import load_settings
 from core.script_manager import ScriptManager
+from core.settings import load_settings
 from core.signals import signals
+from core.system_triggers import register_system_triggers
 from core.timer_manager import TimerManager
 from core.trigger_manager import TriggerManager
-from core.system_triggers import register_system_triggers
 from ui.keymap import KeyMapper
-
-from ui.windows.profile_manager import ProfileManager
 from ui.windows.main_window import MainWindow
+from ui.windows.profile_manager import ProfileManager
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.WARNING,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
 log = logging.getLogger(__name__)
@@ -175,18 +173,20 @@ class App:
         if opt == TelnetCmd.ECHO:
             cmd = TelnetCmd(cmd_value)
             inp = self.main_window.console.input
-            inp.setMasking(cmd == TelnetCmd.WILL)
+            inp.set_masking(cmd == TelnetCmd.WILL)
         elif opt == TelnetCmd.ATCP2:
             self.connection.socket.write(bytes([TelnetCmd.IAC, TelnetCmd.DO, TelnetCmd.ATCP2]))
 
-    def _on_disconnect(self):
+    @staticmethod
+    def _on_disconnect():
         log.info("Disconnected from MUD.")
 
-    def _on_error(self, msg: str):
+    @staticmethod
+    def _on_error(msg: str):
         log.error(f"[ERROR] {msg}")
 
     # TODO: Little bit of cludge code here.  Some bug skips the second element of the list so LIB is in twice to compensate.
-    def _on_login(self, *args):
+    def _on_login(self):
         for stream in ["LIB", "LIB", "CVB", "MCB"]:
             self.connection.send_gmcp(stream)
 

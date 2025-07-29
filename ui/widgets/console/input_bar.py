@@ -1,11 +1,11 @@
 # ui/widgets/console/input_bar.py
 
+from PySide6.QtCore import Qt, QTimer, QPoint
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QPlainTextEdit, QListWidget, QListWidgetItem
-from PySide6.QtCore import Qt, QTimer, QPoint
 
-from ui.style import get_mono_font
 from core.config import COMPLETION_POPUP_MAX_ROWS
+from ui.style import get_mono_font
 
 
 class ConsoleInput(QPlainTextEdit):
@@ -53,7 +53,7 @@ class ConsoleInput(QPlainTextEdit):
 
         # Input masking
         self._masking = False
-        self._buffer = ""       # Stores masked text
+        self._buffer = ""  # Stores masked text
 
     def _update_input_height(self):
         doc = self.document()
@@ -252,7 +252,7 @@ class ConsoleInput(QPlainTextEdit):
         self.reset_completion()
         self.reset_history_navigation()
 
-    def setMasking(self, enabled: bool):
+    def set_masking(self, enabled: bool):
         """Turn password-masking on or off."""
         self._masking = enabled
         # if switching modes, rewrite what's shown
@@ -267,10 +267,10 @@ class ConsoleInput(QPlainTextEdit):
 
     # ─── Masked input methods ───────────────────────────────────
 
-    def isMasking(self) -> bool:
+    def is_masking(self) -> bool:
         return self._masking
 
-    def getUnmaskedText(self) -> str:
+    def get_unmasked_text(self) -> str:
         """Return the real, unmasked text."""
         return self._buffer
 
@@ -294,7 +294,7 @@ class ConsoleInput(QPlainTextEdit):
     # ─── Event Hooks ─────────────────────────────────────────────
 
     def keyPressEvent(self, event):
-        key  = event.key()
+        key = event.key()
         mods = event.modifiers()
         text = event.text()
 

@@ -6,23 +6,25 @@ from typing import Callable, Optional, Union, List, Tuple, Literal
 
 log = logging.getLogger(__name__)
 
+
 class TelnetCmd(IntEnum):
-    IAC   = 255
-    DONT  = 254
-    DO    = 253
-    WONT  = 252
-    WILL  = 251
-    SB    = 250
-    GA    = 249
-    SE    = 240
+    IAC = 255
+    DONT = 254
+    DO = 253
+    WONT = 252
+    WILL = 251
+    SB = 250
+    GA = 249
+    SE = 240
     ATCP2 = 201
-    ECHO  = 1
+    ECHO = 1
+
 
 # Frame types
 TelnetDataFrame = Tuple[Literal['data'], bytes]
-TelnetNegFrame  = Tuple[Literal['neg'], TelnetCmd, int]
-TelnetSbFrame   = Tuple[Literal['sb'], int, bytes]
-TelnetGaFrame   = Tuple[Literal['ga'], None]
+TelnetNegFrame = Tuple[Literal['neg'], TelnetCmd, int]
+TelnetSbFrame = Tuple[Literal['sb'], int, bytes]
+TelnetGaFrame = Tuple[Literal['ga'], None]
 TelnetGmcpFrame = Tuple[Literal['gmcp'], str, Optional[str]]
 
 TelnetFrame = Union[
@@ -33,17 +35,18 @@ TelnetFrame = Union[
     TelnetGmcpFrame
 ]
 
+
 class TelnetParser:
     MAX_SB_LEN = 4096
 
     def __init__(
-        self,
-        *,
-        on_data: Optional[Callable[[bytes], None]] = None,
-        on_neg: Optional[Callable[[TelnetCmd, int], None]] = None,
-        on_ga: Optional[Callable[[], None]] = None,
-        on_gmcp: Optional[Callable[[str, Optional[str]], None]] = None,
-        on_sb: Optional[Callable[[int, bytes], None]] = None,
+            self,
+            *,
+            on_data: Optional[Callable[[bytes], None]] = None,
+            on_neg: Optional[Callable[[TelnetCmd, int], None]] = None,
+            on_ga: Optional[Callable[[], None]] = None,
+            on_gmcp: Optional[Callable[[str, Optional[str]], None]] = None,
+            on_sb: Optional[Callable[[int, bytes], None]] = None,
     ):
         self.on_data = on_data
         self.on_neg = on_neg

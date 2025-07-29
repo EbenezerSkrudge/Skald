@@ -2,6 +2,7 @@
 
 from PySide6.QtGui import QFont
 
+
 def get_mono_font(size=10):
     for name in ["Consolas", "Courier New", "DejaVu Sans Mono", "Monaco", "monospace"]:
         font = QFont(name)

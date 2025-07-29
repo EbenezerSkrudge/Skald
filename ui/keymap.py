@@ -1,22 +1,23 @@
 # ui/keymap.py
 
 from typing import Dict, List
+
 from PySide6.QtCore import QObject, QEvent, Qt
 from PySide6.QtWidgets import QApplication
 
 # Map keypad digits to cardinal directions
 _NUMPAD_BASE = {
     Qt.Key_1: "southwest", Qt.Key_2: "south", Qt.Key_3: "southeast",
-    Qt.Key_4: "west",                         Qt.Key_6: "east",
+    Qt.Key_4: "west", Qt.Key_6: "east",
     Qt.Key_7: "northwest", Qt.Key_8: "north", Qt.Key_9: "northeast",
 }
 
 # Default key bindings
 DEFAULT_KEYMAP = {
-    Qt.Key_5:     {"action": "look"},
-    Qt.Key_Plus:  {"action": "vertical", "dir": "up"},
+    Qt.Key_5: {"action": "look"},
+    Qt.Key_Plus: {"action": "vertical", "dir": "up"},
     Qt.Key_Minus: {"action": "vertical", "dir": "down"},
-    Qt.Key_0:     {"action": "special"},
+    Qt.Key_0: {"action": "special"},
     **{key: {"action": "cardinal", "base": base} for key, base in _NUMPAD_BASE.items()},
 }
 

@@ -1,16 +1,17 @@
 # ui/widgets/mapper/mapper_widget.py
+from typing import Optional
 
+from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QPainter, QAction
 from PySide6.QtWidgets import (
     QGraphicsScene, QGraphicsView, QLabel, QInputDialog, QMenu
 )
-from PySide6.QtCore import QPointF, Qt
 
+from ui.widgets.mapper.connector_item import (
+    ConnectorItem, BorderConnectorItem
+)
 from ui.widgets.mapper.constants import GRID_SIZE
 from ui.widgets.mapper.map_controller import MapController
-from ui.widgets.mapper.connector_item import (
-    ConnectorItem, BorderConnectorItem, DoorBorderConnectorItem
-)
 
 
 class MapperWidget(QGraphicsView):
@@ -41,44 +42,60 @@ class MapperWidget(QGraphicsView):
         self.area_label.setMinimumWidth(100)
 
     def contextMenuEvent(self, event):
-        item = self._get_connector_item(self.mapToScene(event.pos()))
-        if not item:
-            return super().contextMenuEvent(event)
+        scene_pt = self.mapToScene(event.pos())
+        items = self.scene().items(scene_pt)
 
-        a, b = self._get_connector_nodes(item)
-        if not (a and b):
+        for it in items:
+            # — 1) normal ConnectorItem? —
+            if isinstance(it, ConnectorItem):
+                # find its edge in _local_connectors
+                for edge, conn in self.controller.local_connectors.items():
+                    if conn is it:
+                        a_hash, b_hash = edge
+                        break
+                else:
+                    continue
+
+            # — 2) border arrow? —
+            elif isinstance(it, BorderConnectorItem):
+                # read the attributes we stored on creation
+                a_hash = getattr(it, "a_hash", None)
+                b_hash = getattr(it, "b_hash", None)
+                if not (a_hash and b_hash):
+                    continue
+
+            else:
+                continue  # not a connector we care about
+
+            # Normalize ordering
+            a, b = sorted((a_hash, b_hash))
+
+            # Build menu
+            is_border = self.controller.global_graph.is_border(a, b)
+            menu = QMenu(self)
+            label = "Remove Border" if is_border else "Set Border"
+            action = QAction(label, self)
+            # toggle to the opposite of current state
+            action.triggered.connect(
+                lambda _, x=a, y=b, f=not is_border: self._toggle_border(x, y, f)
+            )
+            menu.addAction(action)
+            menu.exec_(event.globalPos())
             return
 
-        a, b = sorted((a, b))
-        is_border = self.controller.global_graph.is_border(a, b)
-        label = "Remove Border" if is_border else "Set Border"
-        action = QAction(label, self)
-        action.triggered.connect(lambda _, x=a, y=b, f=not is_border: self._toggle_border(x, y, f))
+        # fallback if we didn’t hit a connector
+        super().contextMenuEvent(event)
 
-        menu = QMenu(self)
-        menu.addAction(action)
-        menu.exec_(event.globalPos())
-
-    def _get_connector_item(self, scene_pos):
-        for item in self.scene().items(scene_pos):
-            parent = getattr(item, "parentItem", lambda: None)()
-            connector = parent if isinstance(parent, DoorBorderConnectorItem) else item
-            if isinstance(connector, ConnectorItem):
-                return connector
-        return None
-
-    def _get_connector_nodes(self, item):
-        if isinstance(item, (BorderConnectorItem, DoorBorderConnectorItem)):
-            return item.a_hash, item.b_hash
-        for (a, b), conn in self.controller._local_connectors.items():
-            if conn is item:
-                return a, b
-        return None, None
+    @staticmethod
+    def _get_connector_nodes(item) -> tuple[Optional[str], Optional[str]]:
+        a_hash = getattr(item, "a_hash", None)
+        b_hash = getattr(item, "b_hash", None)
+        return a_hash, b_hash
 
     def _toggle_border(self, a_hash, b_hash, flag):
         self.controller.global_graph.set_border(a_hash, b_hash, flag)
         self.controller.build_local_area()
-        self.controller._render_local_graph()
+        self.controller.render_local_graph()
         self.controller.mapUpdated.emit()
 
     def wheelEvent(self, event):

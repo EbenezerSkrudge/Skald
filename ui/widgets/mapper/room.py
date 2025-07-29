@@ -1,17 +1,19 @@
 # core/mapper/room.py
+from typing import Dict
+
 
 class Room:
     __slots__ = ("hash", "desc", "terrain", "links", "icon", "graph_ref", "grid_x", "grid_y")
 
     def __init__(self, info: dict):
-        self.hash       = info.get("hash")
-        self.desc       = info.get("short", "no description")
-        self.terrain    = info.get("type", "unexplored")
-        self.links      = info.get("links", {})
-        self.icon       = None  # QGraphicsItem reference
-        self.graph_ref  = None  # Optional reference to MapGraph
-        self.grid_x     = 0
-        self.grid_y     = 0
+        self.hash = info.get("hash")
+        self.desc = info.get("short", "no description")
+        self.terrain = info.get("type", "unexplored")
+        self.links: Dict[str, str] = info.get("links", {})
+        self.icon = None  # QGraphicsItem reference
+        self.graph_ref = None  # Optional reference to MapGraph
+        self.grid_x = 0
+        self.grid_y = 0
 
     @property
     def explored(self) -> bool:
@@ -19,9 +21,9 @@ class Room:
 
     def update_from_gmcp(self, info: dict):
         """Refresh room details from a new GMCP packet."""
-        self.desc    = info.get("short", self.desc)
+        self.desc = info.get("short", self.desc)
         self.terrain = info.get("type", self.terrain)
-        self.links   = info.get("links", self.links)
+        self.links = info.get("links", self.links)
 
         if self.icon:
             self.icon.setToolTip(self.desc)

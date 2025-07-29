@@ -2,7 +2,9 @@
 
 import re
 from typing import List, Optional, Callable
+
 from pony.orm import db_session
+
 from core.context import Context
 from data.models import Script  # Pony entity for aliases
 
@@ -31,24 +33,25 @@ class AliasManager:
         for rec in Script.select(lambda s: s.category == "alias" and s.enabled):
             pattern = rec.pattern or ""
             try:
-                compiled = re.compile(pattern)
+                re.compile(pattern)
             except re.error:
                 continue
 
-            code_obj = compile(rec.code or "", f"<alias:{rec.name}>", "exec")
+            compiled_code = compile(rec.code or "", f"<alias:{rec.name}>", "exec")
 
-            def make_action(code_obj=code_obj):
+            def make_action(code_obj=compiled_code):
                 def action_fn(match):
                     self._ctx.exec_script(code_obj, match=match)
+
                 return action_fn
 
             self.register_alias(pattern, make_action(), priority=rec.priority)
 
     def register_alias(
-        self,
-        pattern: str,
-        action_fn: Callable[[re.Match], None],
-        priority: int = 0
+            self,
+            pattern: str,
+            action_fn: Callable[[re.Match], None],
+            priority: int = 0
     ) -> None:
         """Register one alias in memory, sorted by priority desc."""
         compiled = re.compile(pattern)
@@ -83,47 +86,48 @@ class AliasManager:
 
     @db_session
     def create(
-        self,
-        name: str,
-        pattern: str,
-        code: str,
-        priority: int = 0,
-        enabled: bool = True
+            self,
+            name: str,
+            pattern: str,
+            code: str,
+            priority: int = 0,
+            enabled: bool = True
     ) -> Script:
+        # TODO: Add error handling -> dialog to inform user that code block is required.
         rec = Script(
-            name     = name,
-            category = "alias",
-            pattern  = pattern,
-            code     = code,
-            enabled  = enabled,
-            priority = priority
+            name=name,
+            category="alias",
+            pattern=pattern,
+            code=code,
+            enabled=enabled,
+            priority=priority
         )
         rec.flush()
         if enabled:
             self.register_alias(pattern,
-                                 self._make_action_fn(code),
-                                 priority=priority)
+                                self._make_action_fn(code),
+                                priority=priority)
         return rec
 
     @db_session
     def update(
-        self,
-        old_name: str,
-        name: str,
-        pattern: str,
-        code: str,
-        priority: int,
-        enabled: bool
+            self,
+            old_name: str,
+            name: str,
+            pattern: str,
+            code: str,
+            priority: int,
+            enabled: bool
     ) -> Optional[Script]:
         rec = self.find(old_name)
         if not rec:
             return None
 
-        rec.name     = name
-        rec.pattern  = pattern
-        rec.code     = code
+        rec.name = name
+        rec.pattern = pattern
+        rec.code = code
         rec.priority = priority
-        rec.enabled  = enabled
+        rec.enabled = enabled
         rec.flush()
 
         self.reload()
@@ -159,7 +163,8 @@ class AliasManager:
 
     def _make_action_fn(self, code: str):
         code_obj = compile(code or "", "<alias>", "exec")
+
         def action_fn(match):
             self._ctx.exec_script(code_obj, match=match)
-        return action_fn
 
+        return action_fn

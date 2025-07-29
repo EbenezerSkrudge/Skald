@@ -1,8 +1,10 @@
 # core/trigger.py
 
 import re
-from typing        import Callable, Pattern
-from core.context  import Context
+from typing import Callable, Pattern
+
+from core.context import Context
+
 
 class Trigger:
     """
@@ -11,22 +13,21 @@ class Trigger:
     """
 
     def __init__(
-        self,
-        priority:   int,
-        name:       str,
-        regex:      str,
-        pattern:    Pattern[str],
-        action:     Callable[[re.Match[str], Context], None],
-        enabled:    bool,
+            self,
+            priority: int,
+            name: str,
+            regex: str,
+            pattern: Pattern[str],
+            action: Callable[[re.Match[str], Context], None],
+            enabled: bool,
     ):
         self.priority = priority
-        self.name     = name
-        self.regex    = regex
-        self.pattern  = pattern
+        self.name = name
+        self.regex = regex
+        self.pattern = pattern
         # Now properly typed to accept (match, ctx)
         self.action: Callable[[re.Match[str], Context], None] = action
-        self.enabled  = enabled
+        self.enabled = enabled
 
     def __lt__(self, other: "Trigger") -> bool:
         return self.priority < other.priority
-

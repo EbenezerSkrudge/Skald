@@ -32,15 +32,17 @@ def create_arrowhead(start: QPointF, end: QPointF, color: QColor, size: float = 
     poly = arrowhead_points(ux, uy, size)
 
     # Translate the polygon to the endpoint
-    translated_poly = QPolygonF([p + end for p in poly])
+    translated_poly = QPolygonF([p + end for p in poly])  # type: ignore
     arrow = QGraphicsPolygonItem(translated_poly)
     arrow.setBrush(QBrush(color))
     arrow.setPen(QPen(color))
     arrow.setZValue(Z_ROOM_ICON)
     return arrow
 
+
 # Cache for QColor objects by terrain name
 _TERRAIN_COLOR_CACHE = {}
+
 
 def get_terrain_color(terrain: str) -> QColor:
     if terrain not in _TERRAIN_COLOR_CACHE:
@@ -48,8 +50,10 @@ def get_terrain_color(terrain: str) -> QColor:
         _TERRAIN_COLOR_CACHE[terrain] = QColor(hex_code)
     return _TERRAIN_COLOR_CACHE[terrain]
 
+
 # Cache fonts keyed by size
 _FONT_CACHE = {}
+
 
 def get_bold_font(size: float) -> QFont:
     key = round(size, 1)
@@ -60,6 +64,7 @@ def get_bold_font(size: float) -> QFont:
         _FONT_CACHE[key] = font
     return _FONT_CACHE[key]
 
+
 # Cache arrowheads
 @lru_cache(maxsize=128)
 def arrowhead_points(ux: float, uy: float, size: float) -> QPolygonF:
@@ -68,3 +73,12 @@ def arrowhead_points(ux: float, uy: float, size: float) -> QPolygonF:
     left = QPointF(-ux * size + px * size, -uy * size + py * size)
     right = QPointF(-ux * size - px * size, -uy * size - py * size)
     return QPolygonF([tip, left, right])
+
+
+def split_suffix(dir_text: str) -> tuple[str, str | None]:
+    txt = dir_text.lower()
+    if txt.endswith("up"):
+        return txt[:-2], "up"
+    if txt.endswith("down"):
+        return txt[:-4], "down"
+    return txt, None

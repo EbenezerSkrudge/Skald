@@ -1,11 +1,13 @@
 # core/timer_manager.py
 
-from pathlib        import Path
-from typing         import List, Optional, Dict
-from pony.orm       import db_session
+from typing import List, Optional, Dict
+
 from PySide6.QtCore import QObject, QTimer
-from core.context   import Context
-from data.models    import Script
+from pony.orm import db_session
+
+from core.context import Context
+from data.models import Script
+
 
 class TimerManager(QObject):
     """
@@ -16,8 +18,8 @@ class TimerManager(QObject):
 
     def __init__(self, app):
         super().__init__()
-        self._app    = app
-        self._ctx    = Context(app)
+        self._app = app
+        self._ctx = Context(app)
         self._timers: Dict[str, QTimer] = {}
         self.reload()
 
@@ -90,23 +92,23 @@ class TimerManager(QObject):
 
     @db_session
     def create(
-        self,
-        name: str,
-        ms: int,
-        code: str,
-        priority: int = 0,
-        enabled: bool = True
+            self,
+            name: str,
+            ms: int,
+            code: str,
+            priority: int = 0,
+            enabled: bool = True
     ) -> Script:
         """
         Persist a new timer in the DB and start it if enabled.
         """
         rec = Script(
-            name     = name,
-            category = "timer",
-            interval = ms,
-            code     = code,
-            enabled  = enabled,
-            priority = priority
+            name=name,
+            category="timer",
+            interval=ms,
+            code=code,
+            enabled=enabled,
+            priority=priority
         )
         rec.flush()
 
@@ -117,13 +119,13 @@ class TimerManager(QObject):
 
     @db_session
     def update(
-        self,
-        old_name: str,
-        name: str,
-        ms: int,
-        code: str,
-        priority: int,
-        enabled: bool
+            self,
+            old_name: str,
+            name: str,
+            ms: int,
+            code: str,
+            priority: int,
+            enabled: bool
     ) -> Optional[Script]:
         """
         Update an existing timer Script in the DB and restart it under new settings.
@@ -132,11 +134,11 @@ class TimerManager(QObject):
         if not rec:
             return None
 
-        rec.name     = name
+        rec.name = name
         rec.interval = ms
-        rec.code     = code
+        rec.code = code
         rec.priority = priority
-        rec.enabled  = enabled
+        rec.enabled = enabled
         rec.flush()
 
         # Unregister old timer slot

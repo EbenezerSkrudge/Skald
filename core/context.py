@@ -5,6 +5,7 @@ from typing import Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from core.app import App
 
+
 class Context:
     def __init__(self, app: "App"):
         self._app = app
@@ -19,8 +20,8 @@ class Context:
         plus whatever you pass in `extra_locals`.
         """
         sandbox = {
-            "ctx":  self,
-#            "match": match,
+            "ctx": self,
+            #            "match": match,
             "echo": self.echo,
             "send": self.send,
             "send_gmcp": self.send_gmcp,

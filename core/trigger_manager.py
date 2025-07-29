@@ -1,10 +1,11 @@
 import re
-from typing       import List, Optional
+from typing import List, Optional
 
-from pony.orm     import db_session
+from pony.orm import db_session
+
 from core.context import Context
 from core.trigger import Trigger as TriggerData
-from data.models  import Script    # Pony entity for triggers
+from data.models import Script  # Pony entity for triggers
 
 
 class TriggerManager:
@@ -16,7 +17,7 @@ class TriggerManager:
 
     def __init__(self, app):
         # Shared Context for all callbacks
-        self._ctx       = Context(app)
+        self._ctx = Context(app)
         # In-memory list of compiled triggers
         self._triggers: List[TriggerData] = []
         # Load existing triggers from the DB
@@ -44,9 +45,9 @@ class TriggerManager:
     def _load_all_from_db(self) -> None:
         """Load enabled trigger-category Scripts into memory."""
         for rec in Script.select(lambda s: s.category == "trigger" and s.enabled):
-            self._compile_and_register(rec)
+            self.compile_and_register(rec)
 
-    def _compile_and_register(self, rec: Script) -> None:
+    def compile_and_register(self, rec: Script) -> None:
         """Compile the Python code for one Script and register its action."""
         code_obj = compile(rec.code or "", f"<trigger:{rec.name}>", "exec")
 
@@ -55,22 +56,22 @@ class TriggerManager:
 
         # Register in memory
         self.add_trigger(
-            name     = rec.name,
-            regex    = rec.pattern or "",
-            action   = action_fn,
-            enabled  = rec.enabled,
-            priority = rec.priority
+            name=rec.name,
+            regex=rec.pattern or "",
+            action=action_fn,
+            enabled=rec.enabled,
+            priority=rec.priority
         )
 
     # ─── In-Memory Matching ────────────────────────────────────
 
     def add_trigger(
-        self,
-        name: str,
-        regex: str,
-        action,
-        enabled: bool = True,
-        priority: int = 0
+            self,
+            name: str,
+            regex: str,
+            action,
+            enabled: bool = True,
+            priority: int = 0
     ) -> None:
         """
         Compile & register a trigger in memory only.
@@ -78,12 +79,12 @@ class TriggerManager:
         """
         compiled = re.compile(regex)
         trig = TriggerData(
-            priority = priority,
-            name     = name,
-            regex    = regex,
-            pattern  = compiled,
-            action   = action,
-            enabled  = enabled,
+            priority=priority,
+            name=name,
+            regex=regex,
+            pattern=compiled,
+            action=action,
+            enabled=enabled,
         )
 
         # Remove any old by name, then insert and sort
@@ -127,38 +128,38 @@ class TriggerManager:
 
     @db_session
     def create(
-        self,
-        name: str,
-        regex: str,
-        code: str,
-        priority: int = 0,
-        enabled: bool = True
+            self,
+            name: str,
+            regex: str,
+            code: str,
+            priority: int = 0,
+            enabled: bool = True
     ) -> Script:
         """
         Persist a Python-code trigger and register it in memory.
         Returns the new Script record.
         """
         rec = Script(
-            name     = name,
-            category = "trigger",
-            pattern  = regex,
-            code     = code,
-            enabled  = enabled,
-            priority = priority
+            name=name,
+            category="trigger",
+            pattern=regex,
+            code=code,
+            enabled=enabled,
+            priority=priority
         )
         rec.flush()
-        self._compile_and_register(rec)
+        self.compile_and_register(rec)
         return rec
 
     @db_session
     def update(
-        self,
-        old_name: str,
-        name: str,
-        regex: str,
-        code: str,
-        priority: int,
-        enabled: bool
+            self,
+            old_name: str,
+            name: str,
+            regex: str,
+            code: str,
+            priority: int,
+            enabled: bool
     ) -> Optional[Script]:
         """
         Update a trigger record and re-register in memory.
@@ -168,15 +169,15 @@ class TriggerManager:
         if not rec:
             return None
 
-        rec.name     = name
-        rec.pattern  = regex
-        rec.code     = code
+        rec.name = name
+        rec.pattern = regex
+        rec.code = code
         rec.priority = priority
-        rec.enabled  = enabled
+        rec.enabled = enabled
         rec.flush()
 
         self.remove_trigger(old_name)
-        self._compile_and_register(rec)
+        self.compile_and_register(rec)
         return rec
 
     @db_session
@@ -201,7 +202,7 @@ class TriggerManager:
         rec.flush()
 
         if rec.enabled:
-            self._compile_and_register(rec)
+            self.compile_and_register(rec)
         else:
             self.remove_trigger(name)
 
@@ -210,27 +211,28 @@ class TriggerManager:
     # ─── Template-Trigger Convenience ────────────────────────
 
     def create_template_trigger(
-        self,
-        name: str,
-        regex: str,
-        template: str,
-        priority: int = 0,
-        enabled: bool = True
+            self,
+            name: str,
+            regex: str,
+            template: str,
+            priority: int = 0,
+            enabled: bool = True
     ) -> Script:
         """
         Shorthand: persist a simple {named}-template trigger
         whose action only sends formatted text via ctx.send_to_mud.
         """
+
         def action_fn(match, ctx=self._ctx):
             out = template.format(**match.groupdict())
-            ctx.send_to_mud(out)
+            ctx.send(out)
 
         rec = self.create(
-            name     = name,
-            regex    = regex,
-            code     = "",  # not used for template triggers
-            priority = priority,
-            enabled  = enabled
+            name=name,
+            regex=regex,
+            code="",  # not used for template triggers
+            priority=priority,
+            enabled=enabled
         )
         self.add_trigger(name, regex, action_fn, enabled, priority)
         return rec

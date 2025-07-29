@@ -1,11 +1,11 @@
 # core/system_triggers.py
 
-from core.trigger_manager import TriggerManager
 from core.signals import signals
+from core.trigger_manager import TriggerManager
+
 
 def register_system_triggers(manager: TriggerManager):
-
-    def _on_login(match, ctx):
+    def _on_login(_match, _ctx):
         signals.on_login.emit()
 
     manager.add_trigger(

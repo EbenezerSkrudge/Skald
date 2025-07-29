@@ -1,12 +1,13 @@
 # ui/widgets/mapper/location_widget.py
 
 import math
+
+from PySide6.QtCore import QPointF, Qt
+from PySide6.QtGui import QPen, QBrush, QColor, QPolygonF
 from PySide6.QtWidgets import (
     QGraphicsItemGroup, QGraphicsEllipseItem,
     QGraphicsPolygonItem, QGraphicsDropShadowEffect
 )
-from PySide6.QtGui import QPen, QBrush, QColor, QPolygonF
-from PySide6.QtCore import QPointF, Qt
 
 from ui.widgets.mapper.constants import GRID_SIZE, Z_ROOM_ICON
 
@@ -15,8 +16,8 @@ class LocationWidget(QGraphicsItemGroup):
     """Displays the player location as a circle with an optional directional arrow."""
 
     _DIRECTIONS = {
-        1: (-1,  1), 2: (0, 1), 3: (1,  1),
-        4: (-1,  0),            6: (1,  0),
+        1: (-1, 1), 2: (0, 1), 3: (1, 1),
+        4: (-1, 0), 6: (1, 0),
         7: (-1, -1), 8: (0, -1), 9: (1, -1),
     }
 
@@ -53,11 +54,12 @@ class LocationWidget(QGraphicsItemGroup):
         self.arrow.setVisible(False)
         self.addToGroup(self.arrow)
 
-    def _make_shadow(self, blur, offset):
+    @staticmethod
+    def _make_shadow(blur, offset):
         """Returns a black drop shadow effect."""
         shadow = QGraphicsDropShadowEffect()
         shadow.setBlurRadius(blur)
-        shadow.setOffset(*offset)
+        shadow.setOffset(offset[0], offset[1])
         shadow.setColor(QColor(0, 0, 0, 160))
         return shadow
 
@@ -90,7 +92,7 @@ class LocationWidget(QGraphicsItemGroup):
         # Perpendicular vector for width
         px, py = -uy, ux
         half_w = self.arrow_width / 2
-        left  = QPointF(base_center.x() + px * half_w, base_center.y() + py * half_w)
+        left = QPointF(base_center.x() + px * half_w, base_center.y() + py * half_w)
         right = QPointF(base_center.x() - px * half_w, base_center.y() - py * half_w)
 
         # Set polygon and show

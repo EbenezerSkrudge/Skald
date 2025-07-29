@@ -1,17 +1,17 @@
 # ui/widgets/mapper/connector_item.py
 
 import math
+
+from PySide6.QtCore import QRectF, QPointF, QLineF
+from PySide6.QtGui import (
+    QPen, QBrush, QColor, QTransform, QPolygonF, Qt
+)
 from PySide6.QtWidgets import (
     QGraphicsLineItem, QGraphicsRectItem, QGraphicsEllipseItem,
     QGraphicsItemGroup, QGraphicsPolygonItem
 )
-from PySide6.QtGui import (
-    QPen, QBrush, QColor, QTransform, QPolygonF, Qt
-)
-from PySide6.QtCore import QRectF, QPointF, QLineF
 
 from ui.widgets.mapper.constants import Z_CONNECTOR, Z_ROOM_SHAPE, Z_ROOM_ICON
-from game.terrain import TERRAIN_TYPES
 from ui.widgets.mapper.utils import shorten_line, create_arrowhead
 
 
@@ -26,7 +26,7 @@ class ConnectorItem(QGraphicsLineItem):
         super().__init__()
         self.icon_a, self.icon_b = icon_a, icon_b
         self._normal_pen = QPen(QColor(color), width)
-        self._hover_pen  = QPen(Qt.cyan, width + 1)
+        self._hover_pen = QPen(Qt.cyan, width + 1)
 
         self.setPen(self._normal_pen)
         self.setZValue(Z_CONNECTOR)
@@ -141,8 +141,8 @@ class DoorBorderConnectorItem(QGraphicsItemGroup):
     """Border connector with a shortened line and door rectangle."""
 
     def __init__(
-        self, icon_a, icon_b=None, target_pos=None, door_open=True,
-        line_color=Qt.yellow, line_width=6, door_size=(30, 6), shaft_shrink=20
+            self, icon_a, icon_b=None, target_pos=None, door_open=True,
+            line_color=Qt.yellow, line_width=6, door_size=(30, 6), shaft_shrink=20
     ):
         super().__init__()
         self.icon_a, self.icon_b = icon_a, icon_b
@@ -209,7 +209,7 @@ class NonCardinalDirectionTag(QGraphicsItemGroup):
         cx, cy = center_scene.x(), center_scene.y()
 
         orange = QColor("orange")
-        arrow_pen = QPen(orange, 3)
+        # TODO: Not needed if icon renders OK: arrow_pen = QPen(orange, 3)
         dash_pen = QPen(orange, 3)
 
         if any(d in directions for d in ("in", "out")):

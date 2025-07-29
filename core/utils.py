@@ -7,5 +7,6 @@ REQUIRED_PROFILE_FILES = (
     "data.sqlite"
 )
 
+
 def is_valid_profile(profile_path: Path) -> bool:
     return all((profile_path / filename).exists() for filename in REQUIRED_PROFILE_FILES)

@@ -2,16 +2,16 @@
 
 import re
 
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout
 )
-
-from PySide6.QtCore import Signal
 
 from core.config import MAX_COMPLETION_LEXICON_SIZE
 from ui.tools.convert import ansi_to_html, expand_html
 from ui.widgets.console.input_bar import ConsoleInput
 from ui.widgets.console.split_display import SplitConsoleDisplay
+
 
 class Console(QWidget):
     commandEntered = Signal(str)
@@ -59,11 +59,11 @@ class Console(QWidget):
         and update the lexicon from the un‐escaped text.
         """
         html = expand_html(html)
-        self.display.echo_html(html+"<br>")
+        self.display.echo_html(html + "<br>")
         self._update_lexicon(raw_text or html)
 
     def handle_input(self):
-        if not self.input.isMasking():
+        if not self.input.is_masking():
             text = self.input.toPlainText().strip()
             prompt = ">"
             if not text:
@@ -86,7 +86,7 @@ class Console(QWidget):
             self.input.reset_completion()
             self.input.reset_history_navigation()
         else:
-            text = self.input.getUnmaskedText()
+            text = self.input.get_unmasked_text()
             self.input.clear()
             self.commandEntered.emit(text)
 

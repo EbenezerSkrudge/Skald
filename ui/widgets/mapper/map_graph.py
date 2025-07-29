@@ -5,12 +5,13 @@ import pickle
 from pathlib import Path
 
 import networkx as nx
+
 from ui.widgets.mapper.room import Room
 
 _TXT_TO_DELTA = {
     "northwest": (-1, -1), "north": (0, -1), "northeast": (1, -1),
-    "west":      (-1,  0),                  "east":      (1,  0),
-    "southwest": (-1,  1), "south": (0,  1), "southeast": (1,  1),
+    "west": (-1, 0), "east": (1, 0),
+    "southwest": (-1, 1), "south": (0, 1), "southeast": (1, 1),
 }
 
 
@@ -66,7 +67,7 @@ class MapGraph(nx.Graph):
 
             # Handle GMCP exit type code
             match exit_types.get(dir_txt):
-                case 101:   # open door
+                case 101:  # open door
                     door_open = True
                     if not had_edge:
                         border = False
@@ -92,7 +93,7 @@ class MapGraph(nx.Graph):
 
     def set_border(self, a: str, b: str, border: bool = True):
         if self.has_edge(a, b):
-            self[a][b]["border"] = border
+            self.add_edge(a, b, border=border)
 
     def is_border(self, a: str, b: str) -> bool:
         return self.has_edge(a, b) and self[a][b].get("border", False)
@@ -121,21 +122,21 @@ class MapGraph(nx.Graph):
                 if not delta:
                     continue
 
-                nx, ny = x + delta[0], y + delta[1]
+                neighbour_x, neighbor_y = x + delta[0], y + delta[1]
                 if neighbor in positions:
                     continue
-                if coord_owner.get((nx, ny), neighbor) != neighbor:
+                if coord_owner.get((neighbour_x, neighbor_y), neighbor) != neighbor:
                     continue
 
-                positions[neighbor] = (nx, ny)
-                coord_owner[(nx, ny)] = neighbor
+                positions[neighbor] = (neighbour_x, neighbor_y)
+                coord_owner[(neighbour_x, neighbor_y)] = neighbor
                 queue.append(neighbor)
 
         return positions
 
     def save_to_file(self, path: str | Path):
         with open(path, "wb") as f:
-            pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL) # type: ignore
 
     @staticmethod
     def load_from_file(path: str | Path) -> "MapGraph":

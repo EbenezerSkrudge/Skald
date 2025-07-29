@@ -1,14 +1,14 @@
 # ui/windows/alias_editor.py
 
-from PySide6.QtCore    import Qt, QSize
+from PySide6.QtCore import Qt, QSize
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QToolBar,
     QToolButton, QListWidget, QListWidgetItem, QLabel,
     QLineEdit, QSpinBox, QMessageBox, QStyle
 )
 
+from ui.widgets.code_editor import CodeEditor
 from ui.widgets.toggle_switch import ToggleSwitch
-from ui.widgets.code_editor   import CodeEditor
 
 
 class AliasEditorWindow(QMainWindow):
@@ -16,9 +16,9 @@ class AliasEditorWindow(QMainWindow):
         super().__init__(parent)
         self.setWindowTitle("Alias Editor")
 
-        self.alias_manager  = alias_manager
+        self.alias_manager = alias_manager
         self.script_manager = script_manager
-        self.current_name   = None
+        self.current_name = None
 
         self._create_widgets()
         self._connect_signals()
@@ -47,14 +47,17 @@ class AliasEditorWindow(QMainWindow):
         self.toolbar.setIconSize(QSize(24, 24))
         right_layout.addWidget(self.toolbar)
 
-        style       = self.style()
-        new_icon    = style.standardIcon(QStyle.SP_FileDialogNewFolder)
-        save_icon   = style.standardIcon(QStyle.SP_DialogSaveButton)
+        style = self.style()
+        new_icon = style.standardIcon(QStyle.SP_FileDialogNewFolder)
+        save_icon = style.standardIcon(QStyle.SP_DialogSaveButton)
         delete_icon = style.standardIcon(QStyle.SP_TrashIcon)
 
-        self.new_btn    = QToolButton(); self.new_btn.setIcon(new_icon)
-        self.save_btn   = QToolButton(); self.save_btn.setIcon(save_icon)
-        self.delete_btn = QToolButton(); self.delete_btn.setIcon(delete_icon)
+        self.new_btn = QToolButton()
+        self.new_btn.setIcon(new_icon)
+        self.save_btn = QToolButton()
+        self.save_btn.setIcon(save_icon)
+        self.delete_btn = QToolButton()
+        self.delete_btn.setIcon(delete_icon)
 
         for btn in (self.new_btn, self.save_btn, self.delete_btn):
             btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
@@ -120,7 +123,7 @@ class AliasEditorWindow(QMainWindow):
         if not item:
             return
         name = item.data(Qt.UserRole)
-        rec  = self.alias_manager.find(name)
+        rec = self.alias_manager.find(name)
         if not rec:
             return
 
@@ -148,11 +151,11 @@ class AliasEditorWindow(QMainWindow):
         self.delete_btn.setEnabled(False)
 
     def _on_save(self):
-        name     = self.name_edit.text().strip()
-        pattern  = self.pattern_edit.text()
-        code     = self.code_edit.text()
+        name = self.name_edit.text().strip()
+        pattern = self.pattern_edit.text()
+        code = self.code_edit.text()
         priority = self.priority_spin.value()
-        enabled  = self.enabled_switch.is_checked()
+        enabled = self.enabled_switch.is_checked()
 
         if not name:
             QMessageBox.warning(self, "Invalid", "Name is required.")
@@ -160,21 +163,21 @@ class AliasEditorWindow(QMainWindow):
 
         if self.current_name is None:
             rec = self.alias_manager.create(
-                name     = name,
-                pattern  = pattern,
-                code     = code,
-                priority = priority,
-                enabled  = enabled
+                name=name,
+                pattern=pattern,
+                code=code,
+                priority=priority,
+                enabled=enabled
             )
             self.current_name = rec.name
         else:
             self.alias_manager.update(
-                old_name = self.current_name,
-                name     = name,
-                pattern  = pattern,
-                code     = code,
-                priority = priority,
-                enabled  = enabled
+                old_name=self.current_name,
+                name=name,
+                pattern=pattern,
+                code=code,
+                priority=priority,
+                enabled=enabled
             )
             self.current_name = name
 
@@ -196,7 +199,7 @@ class AliasEditorWindow(QMainWindow):
         self._populate_list()
         self._on_new()
 
-    def _on_toggle_changed(self, enabled: bool):
+    def _on_toggle_changed(self):
         if not self.current_name:
             return
         self.alias_manager.toggle(self.current_name)

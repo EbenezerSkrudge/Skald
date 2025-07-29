@@ -1,16 +1,14 @@
 # ui/windows/timer_editor.py
 
-from PySide6.QtCore    import Qt, QSize
-from PySide6.QtGui     import QIcon
+from PySide6.QtCore import Qt, QSize
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QSplitter, QFrame,
-    QVBoxLayout, QHBoxLayout, QToolBar, QToolButton,
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QToolBar, QToolButton,
     QListWidget, QLineEdit, QSpinBox, QLabel,
-    QMessageBox, QStyle, QListWidgetItem, QStatusBar
+    QMessageBox, QStyle, QListWidgetItem
 )
 
+from ui.widgets.code_editor import CodeEditor
 from ui.widgets.toggle_switch import ToggleSwitch
-from ui.widgets.code_editor   import CodeEditor
 
 
 class TimerEditorWindow(QMainWindow):
@@ -18,9 +16,9 @@ class TimerEditorWindow(QMainWindow):
         super().__init__(parent)
         self.setWindowTitle("Timer Editor")
 
-        self.timer_manager  = timer_manager
+        self.timer_manager = timer_manager
         self.script_manager = script_manager
-        self.current_name   = None
+        self.current_name = None
 
         self._create_widgets()
         self._connect_signals()
@@ -49,14 +47,17 @@ class TimerEditorWindow(QMainWindow):
         self.toolbar.setIconSize(QSize(24, 24))
         right_layout.addWidget(self.toolbar)
 
-        style       = self.style()
-        new_icon    = style.standardIcon(QStyle.SP_FileDialogNewFolder)
-        save_icon   = style.standardIcon(QStyle.SP_DialogSaveButton)
+        style = self.style()
+        new_icon = style.standardIcon(QStyle.SP_FileDialogNewFolder)
+        save_icon = style.standardIcon(QStyle.SP_DialogSaveButton)
         delete_icon = style.standardIcon(QStyle.SP_TrashIcon)
 
-        self.new_btn    = QToolButton(); self.new_btn.setIcon(new_icon)
-        self.save_btn   = QToolButton(); self.save_btn.setIcon(save_icon)
-        self.delete_btn = QToolButton(); self.delete_btn.setIcon(delete_icon)
+        self.new_btn = QToolButton()
+        self.new_btn.setIcon(new_icon)
+        self.save_btn = QToolButton()
+        self.save_btn.setIcon(save_icon)
+        self.delete_btn = QToolButton()
+        self.delete_btn.setIcon(delete_icon)
 
         for btn in (self.new_btn, self.save_btn, self.delete_btn):
             btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
@@ -65,7 +66,8 @@ class TimerEditorWindow(QMainWindow):
             self.toolbar.addWidget(btn)
 
         # Metadata row: Name / Interval / Priority / Enabled
-        row1 = QWidget(); r1 = QHBoxLayout(row1)
+        row1 = QWidget()
+        r1 = QHBoxLayout(row1)
         r1.setContentsMargins(0, 0, 0, 0)
 
         r1.addWidget(QLabel("Name:"))
@@ -122,7 +124,7 @@ class TimerEditorWindow(QMainWindow):
         if not item:
             return
         name = item.data(Qt.UserRole)
-        rec  = self.timer_manager.find(name)
+        rec = self.timer_manager.find(name)
         if not rec:
             return
 
@@ -150,11 +152,11 @@ class TimerEditorWindow(QMainWindow):
         self.delete_btn.setEnabled(False)
 
     def _on_save(self):
-        name     = self.name_edit.text().strip()
-        ms       = self.interval_spin.value()
+        name = self.name_edit.text().strip()
+        ms = self.interval_spin.value()
         priority = self.priority_spin.value()
-        code     = self.code_edit.text()
-        enabled  = self.enabled_switch.is_checked()
+        code = self.code_edit.text()
+        enabled = self.enabled_switch.is_checked()
 
         if not name or ms <= 0:
             QMessageBox.warning(self, "Invalid", "Name and Interval (>0) are required.")
@@ -162,21 +164,21 @@ class TimerEditorWindow(QMainWindow):
 
         if self.current_name is None:
             rec = self.timer_manager.create(
-                name     = name,
-                ms       = ms,
-                code     = code,
-                priority = priority,
-                enabled  = enabled
+                name=name,
+                ms=ms,
+                code=code,
+                priority=priority,
+                enabled=enabled
             )
             self.current_name = rec.name
         else:
             self.timer_manager.update(
-                old_name = self.current_name,
-                name     = name,
-                ms       = ms,
-                code     = code,
-                priority = priority,
-                enabled  = enabled
+                old_name=self.current_name,
+                name=name,
+                ms=ms,
+                code=code,
+                priority=priority,
+                enabled=enabled
             )
             self.current_name = name
 
@@ -205,12 +207,12 @@ class TimerEditorWindow(QMainWindow):
         rec = self.timer_manager.find(self.current_name)
         if rec:
             self.timer_manager.update(
-                old_name = rec.name,
-                name     = rec.name,
-                ms       = rec.interval or 0,
-                code     = rec.code,
-                priority = rec.priority,
-                enabled  = enabled
+                old_name=rec.name,
+                name=rec.name,
+                ms=rec.interval or 0,
+                code=rec.code,
+                priority=rec.priority,
+                enabled=enabled
             )
             self.script_manager.load_all_scripts()
             self._populate_list()

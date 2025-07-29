@@ -1,13 +1,15 @@
 # core/script_manager.py
 
 import re
-from typing         import TYPE_CHECKING
-from pony.orm       import db_session
-from data.models    import Script
-from core.context   import Context
+from typing import TYPE_CHECKING
+
+from pony.orm import db_session
+
+from core.context import Context
+from data.models import Script
 
 if TYPE_CHECKING:
-    from core.app             import App
+    from core.app import App
     from core.trigger_manager import TriggerManager
 
 
@@ -22,7 +24,7 @@ class ScriptManager:
 
     def __init__(self, app: "App", trigger_manager: "TriggerManager"):
         self.app = app
-        self.tm  = trigger_manager
+        self.tm = trigger_manager
         self.ctx = Context(app)
 
         # On startup, load scripts and timers
@@ -54,7 +56,7 @@ class ScriptManager:
 
             if rec.category == "trigger":
                 # reuse TriggerManager’s compile & register
-                self.tm._compile_and_register(rec)
+                self.tm.compile_and_register(rec)
 
             elif rec.category == "alias":
                 self._register_alias(rec.pattern or "", code_obj, rec.priority)
@@ -68,14 +70,15 @@ class ScriptManager:
             exec(
                 code_obj, {}, {
                     "args": args,
-                    "ctx":  self.ctx
+                    "ctx": self.ctx
                 }
             )
+
         return fn
 
     def _register_alias(self, pattern: str, code_obj, priority: int):
         try:
-            compiled = re.compile(pattern)
+            re.compile(pattern)
         except re.error:
             return
 
@@ -83,9 +86,9 @@ class ScriptManager:
             exec(
                 code_obj, {}, {
                     "match": match,
-                    "ctx":   self.ctx,
-                    "echo":  self.ctx.echo,
-                    "send":  self.ctx.send
+                    "ctx": self.ctx,
+                    "echo": self.ctx.echo,
+                    "send": self.ctx.send
                 }
             )
 

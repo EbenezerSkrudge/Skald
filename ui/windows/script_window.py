@@ -1,5 +1,7 @@
 # ui/windows/scripting_window.py
 
+from PySide6.QtCore import Qt, QModelIndex
+from PySide6.QtGui import QStandardItemModel, QStandardItem
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QPushButton,
@@ -9,15 +11,12 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from PySide6.QtGui    import QStandardItemModel, QStandardItem
-from PySide6.QtCore   import Qt, QModelIndex
-
-from ui.widgets.code_editor    import CodeEditor
-from core.context              import Context
-from core.script_manager       import ScriptManager
-from data.models               import Script
-
 from pony.orm import db_session
+
+from core.context import Context
+from core.script_manager import ScriptManager
+from data.models import Script
+from ui.widgets.code_editor import CodeEditor
 
 
 class ScriptingWindow(QMainWindow):
@@ -29,9 +28,9 @@ class ScriptingWindow(QMainWindow):
 
     def __init__(self, app, script_manager: ScriptManager):
         super().__init__()
-        self.app     = app
-        self.sm      = script_manager
-        self.ctx     = Context(app)
+        self.app = app
+        self.sm = script_manager
+        self.ctx = Context(app)
         self.current = None  # Holds the currently selected Script record
 
         self.setWindowTitle("Scripts Editor")
@@ -50,7 +49,7 @@ class ScriptingWindow(QMainWindow):
         main_layout.addWidget(splitter)
 
         # Tree view for categories & script names
-        self.tree  = QTreeView()
+        self.tree = QTreeView()
         self.model = QStandardItemModel()
         self.model.setHorizontalHeaderLabels(["Category / Script"])
         self.tree.setModel(self.model)
@@ -61,9 +60,9 @@ class ScriptingWindow(QMainWindow):
         splitter.addWidget(self.editor)
 
         # Save / Delete buttons
-        btn_layout   = QHBoxLayout()
+        btn_layout = QHBoxLayout()
         btn_layout.addStretch()
-        self.save_btn   = QPushButton("Save")
+        self.save_btn = QPushButton("Save")
         self.delete_btn = QPushButton("Delete")
         btn_layout.addWidget(self.save_btn)
         btn_layout.addWidget(self.delete_btn)
@@ -112,15 +111,15 @@ class ScriptingWindow(QMainWindow):
         load its code into the editor.
         """
         name = index.data()
-        rec  = Script.get(name=name)
+        rec = Script.get(name=name)
         if rec:
             self.current = rec
-            self.editor.setText(rec.code)
+            self.editor.set_text(rec.code)
             self.save_btn.setEnabled(True)
             self.delete_btn.setEnabled(True)
         else:
             self.current = None
-            self.editor.setText("")
+            self.editor.set_text("")
             self.save_btn.setEnabled(False)
             self.delete_btn.setEnabled(False)
 
@@ -155,6 +154,6 @@ class ScriptingWindow(QMainWindow):
 
         self.sm.load_all_scripts()
         self._populate_tree()
-        self.editor.setText("")
+        self.editor.set_text("")
         self.save_btn.setEnabled(False)
         self.delete_btn.setEnabled(False)

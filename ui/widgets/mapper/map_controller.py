@@ -1,22 +1,21 @@
 # ui/widgets/mapper/map_controller.py
 
-import math
 import os
 import pickle
 
 from PySide6.QtCore import QObject, Signal, QPointF
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QGraphicsScene
 
-from ui.widgets.mapper.location_widget import LocationWidget
-from ui.widgets.mapper.room_icon import RoomIcon
 from ui.widgets.mapper.connector_item import (
     ConnectorItem, DoorConnectorItem, BorderConnectorItem,
     DoorBorderConnectorItem, NonCardinalDirectionTag
 )
-from ui.widgets.mapper.map_graph import MapGraph
 from ui.widgets.mapper.constants import GRID_SIZE
-
-from PySide6.QtCore import QTimer
+from ui.widgets.mapper.location_widget import LocationWidget
+from ui.widgets.mapper.map_graph import MapGraph
+from ui.widgets.mapper.room_icon import RoomIcon
+from ui.widgets.mapper.utils import split_suffix
 
 
 class MapController(QObject):
@@ -51,7 +50,7 @@ class MapController(QObject):
         self._cur_hash = None
 
         self._local_icons = {}
-        self._local_connectors = {}
+        self.local_connectors = {}
         self._local_drawn_edges = set()
         self._local_border_arrows = []
         self._local_direction_tags = []
@@ -63,7 +62,7 @@ class MapController(QObject):
             os.makedirs(self.profile_path, exist_ok=True)
             temp_path = self.map_file_path + ".tmp"
             with open(temp_path, "wb") as f:
-                pickle.dump(self.global_graph, f, protocol=pickle.HIGHEST_PROTOCOL)
+                pickle.dump(self.global_graph, f, protocol=pickle.HIGHEST_PROTOCOL)  # type: ignore
             os.replace(temp_path, self.map_file_path)  # Atomic on most platforms
         except Exception as e:
             print(f"Error saving map: {e}")
@@ -105,7 +104,7 @@ class MapController(QObject):
             self._marker.update_position(gx, gy)
             self._marker.update_direction(move_code)
 
-        self._render_local_graph()
+        self.render_local_graph()
         self.mapUpdated.emit()
 
         self.schedule_save()
@@ -116,9 +115,9 @@ class MapController(QObject):
     def _calculate_move_code(self, prev_hash, current_hash):
         if not prev_hash:
             return None
-        movedir = next((d for d, dest in self._prev_links.items() if dest == current_hash), None)
-        if movedir:
-            base, _ = self._split_suffix(movedir)
+        movement_direction = next((d for d, dest in self._prev_links.items() if dest == current_hash), None)
+        if movement_direction:
+            base, _ = split_suffix(movement_direction)
             return self._TXT_TO_NUM.get(base)
         return None
 
@@ -140,7 +139,7 @@ class MapController(QObject):
 
         return self.local_graph
 
-    def _render_local_graph(self):
+    def render_local_graph(self):
         scene = self.map.scene()
         self._clear_scene_items(scene)
         self._draw_rooms(scene)
@@ -152,7 +151,7 @@ class MapController(QObject):
             scene.removeItem(item)
         for icon in self._local_icons.values():
             scene.removeItem(icon)
-        for conn in self._local_connectors.values():
+        for conn in self.local_connectors.values():
             scene.removeItem(conn)
             if hasattr(conn, "symbol_item"):
                 scene.removeItem(conn.symbol_item)
@@ -160,7 +159,7 @@ class MapController(QObject):
         self._local_border_arrows.clear()
         self._local_direction_tags.clear()
         self._local_icons.clear()
-        self._local_connectors.clear()
+        self.local_connectors.clear()
         self._local_drawn_edges.clear()
 
     def _draw_rooms(self, scene: QGraphicsScene):
@@ -171,7 +170,7 @@ class MapController(QObject):
             scene.addItem(icon)
             self._local_icons[room_hash] = icon
 
-            tags = [d for d in map(str.lower, room.links) if d in ("in", "out", "up", "down")]
+            tags = [d.lower() for d in room.links if d.lower() in ("in", "out", "up", "down")]
             if tags:
                 tag = NonCardinalDirectionTag(icon, tags)
                 scene.addItem(tag)
@@ -194,7 +193,7 @@ class MapController(QObject):
                 icon_a, icon_b)
             conn.add_to_scene(scene)
 
-            self._local_connectors[key] = conn
+            self.local_connectors[key] = conn
             self._local_drawn_edges.add(key)
 
     def _draw_borders(self, scene: QGraphicsScene):
@@ -219,7 +218,7 @@ class MapController(QObject):
                 kwargs = dict(icon_b=icon_other)
             else:
                 dir_txt = next((d for d, dst in self.global_graph.get_room(anchor).links.items() if dst == other), "")
-                base, _ = self._split_suffix(dir_txt)
+                base, _ = split_suffix(dir_txt)
                 dx, dy = self._NUM_TO_DELTA.get(self._TXT_TO_NUM.get(base, 8), (0, -1))
                 pos = icon_anchor.scenePos()
                 kwargs = dict(target_pos=QPointF(pos.x() + dx * GRID_SIZE, pos.y() + dy * GRID_SIZE))
@@ -230,11 +229,3 @@ class MapController(QObject):
             arrow.a_hash, arrow.b_hash = anchor, other
             arrow.add_to_scene(scene)
             self._local_border_arrows.append(arrow)
-
-    def _split_suffix(self, dir_text: str) -> tuple[str, str | None]:
-        txt = dir_text.lower()
-        if txt.endswith("up"):
-            return txt[:-2], "up"
-        if txt.endswith("down"):
-            return txt[:-4], "down"
-        return txt, None

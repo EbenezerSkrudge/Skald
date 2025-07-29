@@ -4,13 +4,14 @@ from PySide6.QtCore import Qt, Property, QPropertyAnimation, Signal, QRectF
 from PySide6.QtGui import QPainter, QColor, QBrush
 from PySide6.QtWidgets import QWidget
 
+
 class ToggleSwitch(QWidget):
     toggled = Signal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedSize(60, 28)
-        self._checked   = True
+        self._checked = True
         self._slider_pos = 1.0
 
         self._anim = QPropertyAnimation(self, b"slider_pos", self)
@@ -52,7 +53,7 @@ class ToggleSwitch(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
-        bg_rect = QRectF(2, 2, self.width()-4, self.height()-4)
+        bg_rect = QRectF(2, 2, self.width() - 4, self.height() - 4)
         knob_diam = self.height() - 6
         knob_x = 3 + self._slider_pos * (self.width() - knob_diam - 6)
         knob_rect = QRectF(knob_x, 3, knob_diam, knob_diam)
@@ -63,7 +64,7 @@ class ToggleSwitch(QWidget):
 
         painter.setBrush(QBrush(bg_color))
         painter.setPen(Qt.NoPen)
-        painter.drawRoundedRect(bg_rect, bg_rect.height()/2, bg_rect.height()/2)
+        painter.drawRoundedRect(bg_rect, bg_rect.height() / 2, bg_rect.height() / 2)
 
         painter.setBrush(QBrush(knob_color))
         painter.drawEllipse(knob_rect)

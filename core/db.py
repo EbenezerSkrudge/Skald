@@ -1,10 +1,12 @@
 # core/db.py
 
-from pathlib    import Path
-from sqlite3    import connect
-from pony.orm   import Database
+from pathlib import Path
+from sqlite3 import connect
+
+from pony.orm import Database
 
 db = Database()
+
 
 def init_db(db_path: Path):
     """
@@ -24,19 +26,19 @@ def init_db(db_path: Path):
 
 def run_migrations(db_path: Path):
     """
-    Runs any unapplied scripts in migrations/*.py against the raw SQLite file.
+    Runs any scripts in migrations/*.py against the raw SQLite file that have yet to be applied.
     Tracks applied filenames in the Migration table.
     """
-    conn   = connect(str(db_path))
+    conn = connect(str(db_path))
     cursor = conn.cursor()
 
     # Lazy‐import so Migration entity exists (mapping done above)
-    from pony.orm     import db_session, select
-    from data.models  import Migration
+    from pony.orm import db_session, select
+    from data.models import Migration
 
     # Figure out which have already run
     with db_session:
-        applied = {m.filename for m in select(m for m in Migration)}
+        applied = {m.filename for m in select(m for m in Migration)} # type: ignore
 
     # Locate and execute each new migration
     migration_dir = Path(__file__).parent.parent / "data/migrations"
@@ -57,7 +59,7 @@ def run_migrations(db_path: Path):
             with db_session:
                 Migration(
                     filename=path.name,
-                    applied = datetime.now(timezone.utc)
+                    applied=datetime.now(timezone.utc)
                 )
 
     conn.commit()

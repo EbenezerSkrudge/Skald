@@ -1,5 +1,13 @@
 # ui/windows/main_window.py
 
+from PySide6.QtCore import (
+    Qt,
+    QTimer,
+)
+from PySide6.QtGui import (
+    QAction,
+    QIcon,
+)
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -10,22 +18,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from PySide6.QtCore import (
-    Qt,
-    QTimer,
-)
-from PySide6.QtGui  import (
-    QAction,
-    QIcon,
-)
+from ui.widgets.console.console import Console
+from ui.widgets.mapper.mapper_widget import MapperWidget
+from ui.windows.alias_editor import AliasEditorWindow
+from ui.windows.timer_editor import TimerEditorWindow
+from ui.windows.trigger_editor import TriggerEditorWindow
 
-from ui.keymap import KeyMapper
-from ui.widgets.console.console         import Console
-from ui.widgets.mapper.map_controller   import MapController
-from ui.windows.alias_editor            import AliasEditorWindow
-from ui.windows.timer_editor            import TimerEditorWindow
-from ui.windows.trigger_editor          import TriggerEditorWindow
-from ui.widgets.mapper.mapper_widget    import MapperWidget
 
 class MainWindow(QMainWindow):
     def __init__(self, app):
@@ -126,9 +124,9 @@ class MainWindow(QMainWindow):
 
     def _handle_command(self, text: str):
         """
-        Called when the user presses enter in the console.
+        Called when the user presses the enter key in the console.
         Intercepts 'py <code>' for in‐app Python execution.
-        Otherwise forwards to the MUD.
+        Otherwise, forwards to the MUD.
         """
         # 1) If it starts with "py ", execute Python locally
         if text.startswith("py "):
@@ -155,9 +153,9 @@ class MainWindow(QMainWindow):
         # Instantiate once, then reuse
         if not hasattr(self, "alias_window"):
             self.alias_window = AliasEditorWindow(
-                parent         = self,
-                alias_manager  = self.app.alias_manager,
-                script_manager = self.app.script_manager
+                parent=self,
+                alias_manager=self.app.alias_manager,
+                script_manager=self.app.script_manager
             )
         self.alias_window.show()
         self.alias_window.raise_()
@@ -166,9 +164,9 @@ class MainWindow(QMainWindow):
     def _open_timers_window(self):
         if not hasattr(self, "timer_window"):
             self.timer_window = TimerEditorWindow(
-                parent          = self,
-                timer_manager   = self.app.timer_manager,
-                script_manager  = self.app.script_manager
+                parent=self,
+                timer_manager=self.app.timer_manager,
+                script_manager=self.app.script_manager
             )
         self.timer_window.show()
         self.timer_window.raise_()
@@ -177,9 +175,9 @@ class MainWindow(QMainWindow):
     def _open_triggers_window(self):
         if not hasattr(self, "trigger_window"):
             self.trigger_window = TriggerEditorWindow(
-                parent          = self,
-                trigger_manager = self.app.trigger_manager,
-                script_manager  = self.app.script_manager
+                parent=self,
+                trigger_manager=self.app.trigger_manager,
+                script_manager=self.app.script_manager
             )
         self.trigger_window.show()
         self.trigger_window.raise_()

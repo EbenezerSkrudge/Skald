@@ -1,16 +1,13 @@
 # ui/widgets/mapper/room_icon.py
 
+from PySide6.QtGui import QBrush, QPen, QColor, Qt
 from PySide6.QtWidgets import (
     QGraphicsItemGroup, QGraphicsRectItem, QGraphicsEllipseItem,
     QGraphicsTextItem, QGraphicsItem
 )
-from PySide6.QtGui import QBrush, QPen, QColor, Qt
-from PySide6.QtCore import QPointF
 
 from ui.widgets.mapper.constants import Z_ROOM_SHAPE, Z_ROOM_ICON, GRID_SIZE, ROOM_SIZE
 from ui.widgets.mapper.utils import get_terrain_color, get_bold_font
-
-from game.terrain import TERRAIN_TYPES
 
 
 class RoomIcon(QGraphicsItemGroup):
@@ -79,4 +76,3 @@ class RoomIcon(QGraphicsItemGroup):
         if change == QGraphicsItem.ItemSelectedHasChanged:
             self.overlay.setVisible(bool(value))
         return super().itemChange(change, value)
-

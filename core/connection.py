@@ -1,23 +1,23 @@
 # core/connection.py
 
 import logging
+from collections import deque
 from typing import Optional
 
 from PySide6.QtCore import QObject, Signal, Slot, QTimer
 from PySide6.QtNetwork import QTcpSocket, QAbstractSocket
 
 from core.telnet import TelnetParser, TelnetCmd
-from collections import deque
 
 log = logging.getLogger(__name__)
 
 
 class MudConnection(QObject):
-    dataReceived   = Signal(str)
-    negotiation    = Signal(int, int)
-    gmcpReceived   = Signal(str, object)
-    errorOccurred  = Signal(str)
-    disconnected   = Signal()
+    dataReceived = Signal(str)
+    negotiation = Signal(int, int)
+    gmcpReceived = Signal(str, object)
+    errorOccurred = Signal(str)
+    disconnected = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -118,7 +118,7 @@ class MudConnection(QObject):
 
     @Slot()
     def _on_ga_timeout(self):
-        log.warning("[GA TIMEOUT] Proceeding with next message in queue")
+        log.info("[GA TIMEOUT] Proceeding with next message in queue")
         self._reset_and_send_next()
 
     def _reset_and_send_next(self):
