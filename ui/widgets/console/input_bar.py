@@ -390,3 +390,10 @@ class ConsoleInput(QPlainTextEdit):
                 self.reset_completion()
                 self.reset_history_navigation()
                 return super().keyPressEvent(event)
+
+    def focusOutEvent(self, event):
+        """
+        Force the input to regain focus if it loses it.
+        """
+        super().focusOutEvent(event)  # Call the parent class's implementation
+        self.setFocus()  # Immediately regain focus
