@@ -24,7 +24,7 @@ class MapGraph(nx.Graph):
     A graph of Room instances. Nodes keyed by room.hash.
     Edges may include:
       - 'border' (bool): prevents traversal
-      - 'door_open' (bool): open (True), closed (False), or None
+      - 'door' (str): "open", "closed", or None
     """
 
     def add_room(self, room: Room):
@@ -58,20 +58,20 @@ class MapGraph(nx.Graph):
             existing = self.get_edge_data(room_hash, dest_hash, default={})
             had_edge = bool(existing)
             border = existing.get("border", False)
-            door_open = existing.get("door_open")
+            door = existing.get("door", None)
 
             # Handle GMCP exit type code
             match exit_types.get(dir_txt):
                 case 101:  # open door
-                    door_open = True
+                    door = "open"
                     if not had_edge:
                         border = False
                 case -101:  # closed door
-                    door_open = False
+                    door = "closed"
                     if not had_edge:
                         border = True
 
-            self.connect_rooms(room_hash, dest_hash, border=border, door_open=door_open)
+            self.connect_rooms(room_hash, dest_hash, border=border, door=door)
 
     def has_room(self, room_hash: str) -> bool:
         return room_hash in self.nodes
@@ -79,11 +79,11 @@ class MapGraph(nx.Graph):
     def get_room(self, room_hash: str) -> Room | None:
         return self.nodes.get(room_hash, {}).get("room")
 
-    def connect_rooms(self, src: str, dst: str, border: bool = False, door_open: bool | None = None):
+    def connect_rooms(self, src: str, dst: str, border: bool = False, door: str | None = None):
         if src in self.nodes and dst in self.nodes:
             attrs = {"border": border}
-            if door_open is not None:
-                attrs["door_open"] = door_open
+            if door is not None:
+                attrs["door"] = door
             self.add_edge(src, dst, **attrs)
 
     def set_border(self, a: str, b: str, border: bool = True):
@@ -107,31 +107,31 @@ class MapGraph(nx.Graph):
             room = self.get_room(current)
             room.grid_x, room.grid_y = x, y
 
-            for dir_txt, neighbor in (room.links or {}).items():
-                if not neighbor or neighbor not in self.nodes:
+            for dir_txt, neighbour in (room.links or {}).items():
+                if not neighbour or neighbour not in self.nodes:
                     continue
-                if self.is_border(current, neighbor):
+                if self.is_border(current, neighbour):
                     continue
 
                 delta = TEXT_TO_DELTA.get(_strip_vertical_suffix(dir_txt))
                 if not delta:
                     continue
 
-                neighbour_x, neighbor_y = x + delta[0], y + delta[1]
-                if neighbor in positions:
+                neighbour_x, neighbour_y = x + delta[0], y + delta[1]
+                if neighbour in positions:
                     continue
-                if coord_owner.get((neighbour_x, neighbor_y), neighbor) != neighbor:
+                if coord_owner.get((neighbour_x, neighbour_y), neighbour) != neighbour:
                     continue
 
-                positions[neighbor] = (neighbour_x, neighbor_y)
-                coord_owner[(neighbour_x, neighbor_y)] = neighbor
-                queue.append(neighbor)
+                positions[neighbour] = (neighbour_x, neighbour_y)
+                coord_owner[(neighbour_x, neighbour_y)] = neighbour
+                queue.append(neighbour)
 
         return positions
 
     def save_to_file(self, path: str | Path):
         with open(path, "wb") as f:
-            pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL) # type: ignore
+            pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)  # type: ignore
 
     @staticmethod
     def load_from_file(path: str | Path) -> "MapGraph":

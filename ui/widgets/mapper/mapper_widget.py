@@ -4,11 +4,10 @@ from typing import Optional
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QPainter, QAction
 from PySide6.QtWidgets import (
-    QGraphicsScene, QGraphicsView, QLabel, QInputDialog, QMenu
+    QGraphicsScene, QGraphicsView, QInputDialog, QMenu
 )
 
-from ui.widgets.mapper.connectors.border_connector_item import BorderConnectorItem
-from ui.widgets.mapper.connectors.connector_item import ConnectorItem
+from ui.widgets.mapper.connectors.cardinal_direction_connector import CardinalDirectionConnector
 from ui.widgets.mapper.constants import GRID_SIZE
 from ui.widgets.mapper.map_controller import MapController
 
@@ -31,22 +30,13 @@ class MapperWidget(QGraphicsView):
         self.controller = MapController(self, profile_path=profile_path)
         self._scene.controller = self.controller
 
-        self._setup_area_label()
-
-    def _setup_area_label(self):
-        self.area_label = QLabel("", self)
-        self.area_label.setStyleSheet("color: white; background-color: rgba(0, 0, 0, 128); padding: 2px;")
-        self.area_label.move(10, 10)
-        self.area_label.raise_()
-        self.area_label.setMinimumWidth(100)
-
     def contextMenuEvent(self, event):
         scene_pt = self.mapToScene(event.pos())
         items = self.scene().items(scene_pt)
 
         for it in items:
             # — 1) normal ConnectorItem? —
-            if isinstance(it, ConnectorItem):
+            if isinstance(it, CardinalDirectionConnector):
                 # find its edge in _local_connectors
                 for edge, conn in self.controller.local_connectors.items():
                     if conn is it:
@@ -55,13 +45,13 @@ class MapperWidget(QGraphicsView):
                 else:
                     continue
 
-            # — 2) border arrow? —
-            elif isinstance(it, BorderConnectorItem):
-                # read the attributes we stored on creation
-                a_hash = getattr(it, "a_hash", None)
-                b_hash = getattr(it, "b_hash", None)
-                if not (a_hash and b_hash):
-                    continue
+            # # — 2) border arrow? —
+            # elif isinstance(it, BorderConnectorItem):
+            #     # read the attributes we stored on creation
+            #     a_hash = getattr(it, "a_hash", None)
+            #     b_hash = getattr(it, "b_hash", None)
+            #     if not (a_hash and b_hash):
+            #         continue
 
             else:
                 continue  # not a connector we care about

@@ -7,11 +7,8 @@ from PySide6.QtCore import QObject, Signal, QPointF
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QGraphicsScene
 
-from ui.widgets.mapper.connectors.non_cardinal_direction_tag import NonCardinalDirectionTag
-from ui.widgets.mapper.connectors.door_border_connector_item import DoorBorderConnectorItem
-from ui.widgets.mapper.connectors.door_connector_item import DoorConnectorItem
-from ui.widgets.mapper.connectors.border_connector_item import BorderConnectorItem
-from ui.widgets.mapper.connectors.connector_item import ConnectorItem
+from ui.widgets.mapper.connectors.non_cardinal_direction_connector import NonCardinalDirectionConnector
+from ui.widgets.mapper.connectors.cardinal_direction_connector import CardinalDirectionConnector
 from ui.widgets.mapper.constants import GRID_SIZE, TEXT_TO_NUM, NUM_TO_DELTA
 from ui.widgets.mapper.location_widget import LocationWidget
 from ui.widgets.mapper.map_graph import MapGraph
@@ -132,18 +129,18 @@ class MapController(QObject):
         scene = self.map.scene()
         self._clear_scene_items(scene)
         self._draw_rooms(scene)
-        self._draw_connectors(scene)
-        self._draw_borders(scene)
+        # self._draw_connectors(scene)
+        # self._draw_borders(scene)
+        self._draw_edges(scene)
 
     def _clear_scene_items(self, scene: QGraphicsScene):
+        # The clear logic remains unchanged but deletes unified connectors
         for item in (*self._local_border_arrows, *self._local_direction_tags):
             scene.removeItem(item)
         for icon in self._local_icons.values():
             scene.removeItem(icon)
         for conn in self.local_connectors.values():
             scene.removeItem(conn)
-            if hasattr(conn, "symbol_item"):
-                scene.removeItem(conn.symbol_item)
 
         self._local_border_arrows.clear()
         self._local_direction_tags.clear()
@@ -161,60 +158,57 @@ class MapController(QObject):
 
             tags = [d.lower() for d in room.links if d.lower() in ("in", "out", "up", "down")]
             if tags:
-                tag = NonCardinalDirectionTag(icon, tags)
+                tag = NonCardinalDirectionConnector(icon, tags)
                 scene.addItem(tag)
                 self._local_direction_tags.append(tag)
 
-    def _draw_connectors(self, scene: QGraphicsScene):
-        for a, b in self.local_graph.edges():
+    def _draw_edges(self, scene: QGraphicsScene):
+        """Draw both connectors and borders using the unified Connector class."""
+        for a, b in self.global_graph.edges():
             key = frozenset((a, b))
             if key in self._local_drawn_edges:
                 continue
 
             attrs = self.global_graph[a][b]
-            door_flag = attrs.get("door_open")
+            door_state = attrs.get("door")  # "open", "closed", or None
+            is_border = self.global_graph.is_border(a, b)
+
             icon_a = self._local_icons.get(a)
             icon_b = self._local_icons.get(b)
-            if not icon_a or not icon_b:
-                continue
 
-            conn = DoorConnectorItem(icon_a, icon_b, door_open=door_flag) if door_flag is not None else ConnectorItem(
-                icon_a, icon_b)
-            conn.add_to_scene(scene)
-
-            self.local_connectors[key] = conn
-            self._local_drawn_edges.add(key)
-
-    def _draw_borders(self, scene: QGraphicsScene):
-        for a, b in self.global_graph.edges():
-            if not self.global_graph.is_border(a, b):
-                continue
-            if not (a in self._local_positions or b in self._local_positions):
-                continue
-
-            anchor = a if a in self._local_positions else b
-            other = b if anchor == a else a
-            icon_anchor = self._local_icons.get(anchor)
-            if not icon_anchor:
-                continue
-
-            door_flag = self.global_graph[a][b].get("door_open")
-
-            if other in self._local_positions:
-                icon_other = self._local_icons.get(other)
-                if not icon_other:
+            # Both endpoints are visible
+            if a in self._local_positions and b in self._local_positions:
+                if not icon_a or not icon_b:
                     continue
-                kwargs = dict(icon_b=icon_other)
-            else:
-                dir_txt = next((d for d, dst in self.global_graph.get_room(anchor).links.items() if dst == other), "")
-                base, _ = split_suffix(dir_txt)
-                dx, dy = NUM_TO_DELTA.get(TEXT_TO_NUM.get(base, 8), (0, -1))
-                pos = icon_anchor.scenePos()
-                kwargs = dict(target_pos=QPointF(pos.x() + dx * GRID_SIZE, pos.y() + dy * GRID_SIZE))
+                conn = CardinalDirectionConnector(icon_a, icon_b, door=door_state, border=is_border)
+                conn.add_to_scene(scene)
+                self.local_connectors[key] = conn
+                self._local_drawn_edges.add(key)
 
-            connector_cls = DoorBorderConnectorItem if door_flag is not None else BorderConnectorItem
-            arrow = connector_cls(icon_anchor, door_open=door_flag,
-                                  **kwargs) if door_flag is not None else connector_cls(icon_anchor, **kwargs)
-            arrow.a_hash, arrow.b_hash = anchor, other
-            arrow.add_to_scene(scene)
-            self._local_border_arrows.append(arrow)
+            # One endpoint is outside the local graph (border arrows)
+            elif is_border:
+                anchor = a if a in self._local_positions else b
+                other = b if anchor == a else a
+                icon_anchor = self._local_icons.get(anchor)
+                if not icon_anchor:
+                    continue
+
+                if other in self._local_positions:
+                    icon_other = self._local_icons.get(other)
+                    if not icon_other:
+                        continue
+                    kwargs = dict(icon_b=icon_other)
+                else:
+                    # If the other end is not visible, calculate the position for the arrow
+                    dir_txt = next((d for d, dst in self.global_graph.get_room(anchor).links.items() if dst == other),
+                                   "")
+                    base, _ = split_suffix(dir_txt)
+                    dx, dy = NUM_TO_DELTA.get(TEXT_TO_NUM.get(base, 8), (0, -1))
+                    pos = icon_anchor.scenePos()
+                    kwargs = dict(target_pos=QPointF(pos.x() + dx * GRID_SIZE, pos.y() + dy * GRID_SIZE))
+
+                # Create a border connector with arrow visualization
+                conn = CardinalDirectionConnector(icon_a=icon_anchor, door=door_state, border=True, **kwargs)
+                conn.add_to_scene(scene)
+                self.local_connectors[key] = conn
+                self._local_drawn_edges.add(key)

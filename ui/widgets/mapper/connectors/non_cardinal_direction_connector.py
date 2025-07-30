@@ -1,4 +1,4 @@
-# ui/widgets/mapper/connectors/non_cardinal_direction_tag.py
+# ui/widgets/mapper/connectors/non_cardinal_direction_connector.py
 
 from PySide6.QtCore import QRectF, QPointF
 from PySide6.QtGui import QColor, QPen
@@ -8,7 +8,7 @@ from ui.widgets.mapper.constants import Z_ROOM_ICON
 from ui.widgets.mapper.utils import shorten_line, create_arrowhead
 
 
-class NonCardinalDirectionTag(QGraphicsItemGroup):
+class NonCardinalDirectionConnector(QGraphicsItemGroup):
     """Displays arrows for non-cardinal directions (in, out, up, down) around an icon."""
 
     def __init__(self, icon, directions: list[str]):
