@@ -1,4 +1,4 @@
-# ui/widgets/mapper/connectors/non_cardinal_direction_connector.py
+# ui/widgets/mapper/graphics/non_cardinal_direction_connector.py
 
 from PySide6.QtCore import QRectF, QPointF
 from PySide6.QtGui import QColor, QPen

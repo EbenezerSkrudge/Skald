@@ -40,15 +40,17 @@ def create_arrowhead(start: QPointF, end: QPointF, color: QColor, size: float = 
     return arrow
 
 
-# Cache for QColor objects by terrain name
-_TERRAIN_COLOR_CACHE = {}
-
-
+_DEFAULT_TERRAIN_COLOR = QColor("#555555")
+_TERRAIN_COLOR_MAP = {
+    name: QColor(hex_code)
+    for _, (name, hex_code) in TERRAIN_TYPES.items()
+}
 def get_terrain_color(terrain: str) -> QColor:
-    if terrain not in _TERRAIN_COLOR_CACHE:
-        hex_code = TERRAIN_TYPES.get(terrain, ("?", "#555"))[1]
-        _TERRAIN_COLOR_CACHE[terrain] = QColor(hex_code)
-    return _TERRAIN_COLOR_CACHE[terrain]
+    """
+    Returns a cached QColor for the given terrain name.
+    Falls back to a neutral gray if the name is unknown.
+    """
+    return _TERRAIN_COLOR_MAP.get(terrain, _DEFAULT_TERRAIN_COLOR)
 
 
 # Cache fonts keyed by size

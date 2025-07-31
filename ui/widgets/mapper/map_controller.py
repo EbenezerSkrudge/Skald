@@ -7,12 +7,12 @@ from PySide6.QtCore import QObject, Signal, QPointF
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QGraphicsScene
 
-from ui.widgets.mapper.connectors.non_cardinal_direction_connector import NonCardinalDirectionConnector
-from ui.widgets.mapper.connectors.cardinal_direction_connector import CardinalDirectionConnector
+from ui.widgets.mapper.graphics.non_cardinal_direction_connector import NonCardinalDirectionConnector
+from ui.widgets.mapper.graphics.cardinal_direction_connector import CardinalDirectionConnector
 from ui.widgets.mapper.constants import GRID_SIZE, TEXT_TO_NUM, NUM_TO_DELTA
 from ui.widgets.mapper.location_widget import LocationWidget
 from ui.widgets.mapper.map_graph import MapGraph
-from ui.widgets.mapper.room_icon import RoomIcon
+from ui.widgets.mapper.graphics.room_icon import RoomIcon
 from ui.widgets.mapper.utils import split_suffix
 
 
@@ -134,7 +134,7 @@ class MapController(QObject):
         self._draw_edges(scene)
 
     def _clear_scene_items(self, scene: QGraphicsScene):
-        # The clear logic remains unchanged but deletes unified connectors
+        # The clear logic remains unchanged but deletes unified graphics
         for item in (*self._local_border_arrows, *self._local_direction_tags):
             scene.removeItem(item)
         for icon in self._local_icons.values():
@@ -163,7 +163,7 @@ class MapController(QObject):
                 self._local_direction_tags.append(tag)
 
     def _draw_edges(self, scene: QGraphicsScene):
-        """Draw both connectors and borders using the unified Connector class."""
+        """Draw both graphics and borders using the unified Connector class."""
         for a, b in self.global_graph.edges():
             key = frozenset((a, b))
             if key in self._local_drawn_edges:

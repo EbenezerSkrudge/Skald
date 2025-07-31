@@ -8,7 +8,7 @@ class Room:
     def __init__(self, info: dict):
         self.hash = info.get("hash")
         self.desc = info.get("short", "no description")
-        self.terrain = info.get("type", "unexplored")
+        self.terrain = info.get("type", -1)
         self.links: Dict[str, str] = info.get("links", {})
         self.icon = None  # QGraphicsItem reference
         self.graph_ref = None  # Optional reference to MapGraph
@@ -17,7 +17,7 @@ class Room:
 
     @property
     def explored(self) -> bool:
-        return self.terrain != "unexplored"
+        return self.terrain != -1
 
     def update_from_gmcp(self, info: dict):
         """Refresh room details from a new GMCP packet."""

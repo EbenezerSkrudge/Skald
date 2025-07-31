@@ -111,7 +111,7 @@ class CardinalDirectionConnector(QGraphicsItem):
         length = line.length()
         angle = -line.angle()
 
-        # halve for border‐connectors
+        # halve for border‐graphics
         if self.border:
             line.setLength(length / 2)
 

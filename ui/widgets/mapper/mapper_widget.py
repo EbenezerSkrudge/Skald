@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QGraphicsScene, QGraphicsView, QInputDialog, QMenu
 )
 
-from ui.widgets.mapper.connectors.cardinal_direction_connector import CardinalDirectionConnector
+from ui.widgets.mapper.graphics.cardinal_direction_connector import CardinalDirectionConnector
 from ui.widgets.mapper.constants import GRID_SIZE
 from ui.widgets.mapper.map_controller import MapController
 
