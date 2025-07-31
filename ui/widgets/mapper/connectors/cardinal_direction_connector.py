@@ -1,167 +1,177 @@
-from PySide6.QtCore import QLineF, QPointF, QRectF
-from PySide6.QtGui import Qt, QPen, QColor, QBrush, QTransform, QPolygonF
-from PySide6.QtWidgets import QGraphicsItemGroup, QGraphicsLineItem, QGraphicsRectItem, QGraphicsPolygonItem
+from PySide6.QtCore import (
+    QLineF, QPointF, QRectF, Qt
+)
+from PySide6.QtGui import (
+    QPen, QColor, QBrush, QPainterPath, QPainterPathStroker, QPolygonF
+)
+from PySide6.QtWidgets import (
+    QGraphicsItem, QGraphicsLineItem, QGraphicsRectItem, QGraphicsPolygonItem
+)
 
 from ui.widgets.mapper.constants import Z_CONNECTOR, Z_ROOM_SHAPE
 
 
-class CardinalDirectionConnector(QGraphicsItemGroup):
-    """
-    A unified connector class that can represent:
-        - Basic connectors
-        - Connectors with an optional door (None, "open", or "closed")
-        - Border connectors with arrows and hover effects.
-    """
+class CardinalDirectionConnector(QGraphicsItem):
+    # Colors & pens
+    _CONNECTOR_COLOUR = Qt.darkGray
+    _HOVER_COLOUR = Qt.cyan
+    _BORDER_COLOUR = QColor("orange")
 
-    CONNECTOR_COLOUR    = Qt.darkGray
-    HOVER_COLOUR        = Qt.cyan
-    BORDER_COLOUR       = QColor("orange")
+    _CONNECTOR_PEN = QPen(_CONNECTOR_COLOUR, 4)
+    _BORDER_PEN = QPen(_BORDER_COLOUR, 4)
 
-    _border_pen = QPen(QColor(BORDER_COLOUR), 4)
-    _connector_pen = QPen(QColor(CONNECTOR_COLOUR), 4)
+    # Arrow template (size = 8px)
+    _BASE_ARROW_SIZE = 8
+    _BASE_ARROW_POLY = QPolygonF([
+        QPointF(0, -_BASE_ARROW_SIZE),
+        QPointF(-_BASE_ARROW_SIZE * 0.6, 0),
+        QPointF(+_BASE_ARROW_SIZE * 0.6, 0),
+    ])
 
-    def __init__(self, icon_a, icon_b=None, target_pos=None,
-                 door=None, border=False,
-                 arrow_size=8, shaft_length=16,
-                 line_width=4):
-        """
-        :param icon_a: The starting graphic icon.
-        :param icon_b: The ending graphic icon (optional if using target_pos).
-        :param target_pos: A fixed endpoint for the connector (optional).
-        :param door: Door state: "none", "open", or "closed".
-        :param border: Whether the connector is a border type.
-        :param arrow_size: Arrow size (used if border=True).
-        :param shaft_length: Shaft length (used if border=True).
-        :param line_width: Width of the connector line.
-        """
+    # Door templates
+    _DOOR_WIDTH = 30
+    _DOOR_HEIGHT = 10
+    _DOOR_RECT = QRectF(-_DOOR_WIDTH / 2,
+                        -_DOOR_HEIGHT / 2,
+                        _DOOR_WIDTH,
+                        _DOOR_HEIGHT)
+    _DOOR_BRUSHES = {
+        "open": QBrush(QColor("lime")),
+        "closed": QBrush(QColor("red")),
+    }
+    _DOOR_ROTATIONS = {
+        "open": 70,
+        "closed": 90,
+    }
+
+    def __init__(
+            self,
+            icon_a,
+            icon_b=None,
+            target_pos=None,
+            door=None,
+            border=False,
+            shaft_length=16,
+            line_width=4,
+    ):
         super().__init__()
 
         self.icon_a = icon_a
         self.icon_b = icon_b
         self.target_pos = target_pos
-        self.door_state = door
+        self.door_state = door  # None, "open", or "closed"
         self.border = border
 
-        # Pens and Z-order
-        if border:
-            self._normal_pen = self._border_pen
-        else:
-            self._normal_pen = self._connector_pen
+        # Pens
+        self._normal_pen = (
+            self._BORDER_PEN if border
+            else self._CONNECTOR_PEN
+        )
+        self._hover_pen = QPen(self._HOVER_COLOUR,
+                               line_width + 1)
 
-        self._hover_pen = QPen(self.HOVER_COLOUR, line_width + 1)
-
+        # Z‐order + hover
         self.setZValue(Z_CONNECTOR)
+        self.setAcceptHoverEvents(True)
 
-        # Main line for the connector
-        self.line_item = QGraphicsLineItem(parent=self)
+        # Main line
+        self.line_item = QGraphicsLineItem(self)
         self.line_item.setPen(self._normal_pen)
 
-        self.shaft_length = shaft_length
-
-        # Optional door rectangle visualization
+        # Door (optional)
         self.door_item = None
-        if door:
-            self.door_item = QGraphicsRectItem(parent=self)
+        if door is not None:
+            self.door_item = QGraphicsRectItem(self)
             self.door_item.setZValue(Z_ROOM_SHAPE)
+            # pivot about its center
+            self.door_item.setTransformOriginPoint(0, 0)
 
-        # Optional border arrow
+        # Arrow (optional, border only)
         self.arrow_item = None
         if border:
-            self.arrow_item = QGraphicsPolygonItem(parent=self)
+            self.arrow_item = QGraphicsPolygonItem(self)
             self.arrow_item.setZValue(Z_CONNECTOR)
-            self.arrow_item.setBrush(QBrush(QColor(self.BORDER_COLOUR)))
+            self.arrow_item.setBrush(QBrush(self._BORDER_COLOUR))
             self.arrow_item.setPen(self._normal_pen)
-            self.line_item.setPen(self._normal_pen)
-            self._base_arrow_poly = QPolygonF([
-                QPointF(0, -arrow_size),
-                QPointF(-arrow_size * 0.6, 0),
-                QPointF(+arrow_size * 0.6, 0)
-            ])
-            self.arrow_item.setPolygon(self._base_arrow_poly)
+            self.arrow_item.setPolygon(self._BASE_ARROW_POLY)
 
-        self.setAcceptHoverEvents(True)
-        self.line_item.setAcceptHoverEvents(True)
-        if self.arrow_item:
-            self.arrow_item.setAcceptHoverEvents(True)
-        if self.door_item:
-            self.door_item.setAcceptHoverEvents(True)
-
+        # Initial layout
+        self.shaft_length = shaft_length
         self.refresh()
 
+    def add_to_scene(self, scene):
+        """Back‐compatibility convenience."""
+        scene.addItem(self)
+
     def refresh(self):
-        """Update connector geometry, the door, and border visualization."""
+        # endpoints & angle
         p1 = self.icon_a.scenePos()
-
-        if self.icon_b:
-            p2 = self.icon_b.scenePos()
-        else:
-            p2 = self.target_pos
-
+        p2 = self.icon_b.scenePos() if self.icon_b else self.target_pos
         line = QLineF(p1, p2)
         length = line.length()
         angle = -line.angle()
 
-        # Halve the line length if this is a border connector
+        # halve for border‐connectors
         if self.border:
-            half_length = length / 2
-            line.setLength(half_length)  # Adjust the line to half its original length
+            line.setLength(length / 2)
 
-        # Update the main line
+        # update line
         self.line_item.setLine(line)
 
-        # Update the door item (if applicable)
-        if self.door_item:
-            door_width, door_height = 30, 10
+        # update door
+        if self.door_item and self.door_state in self._DOOR_ROTATIONS:
+            pos = (line.p2() if self.border
+                   else line.center())
+            rot_off = self._DOOR_ROTATIONS[self.door_state]
+            brush = self._DOOR_BRUSHES[self.door_state]
 
-            if self.border:
-                # For border connectors, place the door at the end of the line
-                position = line.p2()
-            else:
-                # For non-border connectors, place the door at the midpoint of the line
-                position = line.center()
+            # apply templates
+            self.door_item.setRect(self._DOOR_RECT)
+            self.door_item.setBrush(brush)
 
-            rotation = (angle + 70) if self.door_state == "open" else (angle + 90)
-            brush_color = QColor("lime" if self.door_state == "open" else "red")
+            # rotate around center, then position
+            self.door_item.setRotation(angle + rot_off)
+            self.door_item.setPos(pos)
 
-            self.door_item.setRect(
-                QRectF(position.x() - door_width / 2, position.y() - door_height / 2, door_width, door_height)
-            )
-            self.door_item.setBrush(QBrush(brush_color))
-
-            transform = (
-                QTransform()
-                .translate(position.x(), position.y())
-                .rotate(rotation)
-                .translate(-position.x(), -position.y())
-            )
-            self.door_item.setTransform(transform)
-
-        # Update the border arrow (if applicable)
+        # update arrow
         if self.arrow_item:
-            if self.border and not self.door_state:  # Only show the arrow if there's no door
-                self.arrow_item.setPolygon(self._base_arrow_poly)
+            if self.border and not self.door_state:
                 self.arrow_item.setRotation(angle + 90)
-                self.arrow_item.setPos(line.p2())  # Place the arrow at the end of the halved line
+                self.arrow_item.setPos(line.p2())
             else:
-                self.arrow_item.setPolygon(QPolygonF())  # Hide the arrow if a door exists
+                # hide it by clearing polygon
+                self.arrow_item.setPolygon(QPolygonF())
 
-    def add_to_scene(self, scene):
-        """Add the connector to the scene."""
-        scene.addItem(self)
+    def boundingRect(self) -> QRectF:
+        rect = self.childrenBoundingRect()
+        return rect.adjusted(-6, -6, 6, 6)
 
-    def boundingRect(self):
-        return self.childrenBoundingRect()
+    def shape(self) -> QPainterPath:
+        path = QPainterPath()
+        ln = self.line_item.line()
+        path.moveTo(ln.p1())
+        path.lineTo(ln.p2())
+
+        stroker = QPainterPathStroker()
+        stroker.setWidth(self._normal_pen.widthF() + 8)
+        return stroker.createStroke(path)
 
     def hoverEnterEvent(self, event):
-        """Handle hover enter: Apply hover appearance."""
         self.line_item.setPen(self._hover_pen)
         if self.arrow_item:
             self.arrow_item.setPen(self._hover_pen)
+        if self.door_item:
+            self.door_item.setPen(self._hover_pen)
         super().hoverEnterEvent(event)
 
     def hoverLeaveEvent(self, event):
-        """Handle hover leave: Return to normal appearance."""
         self.line_item.setPen(self._normal_pen)
         if self.arrow_item:
             self.arrow_item.setPen(self._normal_pen)
+        if self.door_item:
+            self.door_item.setPen(QPen(Qt.NoPen))
         super().hoverLeaveEvent(event)
+
+    def paint(self, *args):
+        # children paint themselves
+        pass

@@ -20,8 +20,7 @@ class NonCardinalDirectionConnector(QGraphicsItemGroup):
         cx, cy = center_scene.x(), center_scene.y()
 
         orange = QColor("orange")
-        # TODO: Not needed if icon renders OK: arrow_pen = QPen(orange, 3)
-        dash_pen = QPen(orange, 3)
+        line_pen = QPen(orange, 3)
 
         if any(d in directions for d in ("in", "out")):
             io_group = QGraphicsItemGroup(self)
@@ -47,7 +46,7 @@ class NonCardinalDirectionConnector(QGraphicsItemGroup):
             ud_group = QGraphicsItemGroup(self)
             for x in (-5, 6):
                 dash = QGraphicsLineItem(x - 1, 0, x, 0)
-                dash.setPen(dash_pen)
+                dash.setPen(line_pen)
                 ud_group.addToGroup(dash)
 
             for d in ("up", "down"):
@@ -59,8 +58,14 @@ class NonCardinalDirectionConnector(QGraphicsItemGroup):
                     else (QPointF(0, -y), QPointF(0, y + 2))
                 )
                 se = shorten_line(start, end, 2)
-                ud_group.addToGroup(QGraphicsLineItem(start.x(), start.y(), se.x(), se.y()))
-                ud_group.addToGroup(create_arrowhead(start, end, orange))
+
+                # create the shaft, then set its pen
+                shaft = QGraphicsLineItem(start.x(), start.y(), se.x(), se.y())
+                shaft.setPen(line_pen)
+                ud_group.addToGroup(shaft)
+
+                # now the arrow head
+                ud_group.addToGroup(create_arrowhead(start, end, QColor("orange")))
 
             ud_group.setPos(cx + 31, cy - 12)
             ud_group.setZValue(Z_ROOM_ICON)
