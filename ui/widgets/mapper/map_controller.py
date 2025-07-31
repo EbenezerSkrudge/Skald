@@ -7,12 +7,12 @@ from collections import Counter
 from PySide6.QtCore import QObject, Signal, QPointF, QTimer
 from PySide6.QtWidgets import QGraphicsScene
 
-from ui.widgets.mapper.graphics.non_cardinal_direction_connector import NonCardinalDirectionConnector
+from ui.widgets.mapper.constants import GRID_SIZE, TEXT_TO_NUM, NUM_TO_DELTA
 from ui.widgets.mapper.graphics.cardinal_direction_connector import CardinalDirectionConnector
-from ui.widgets.mapper.constants import GRID_SIZE, TEXT_TO_NUM, NUM_TO_DELTA, Z_ROOM_ICON
+from ui.widgets.mapper.graphics.non_cardinal_direction_connector import NonCardinalDirectionConnector
+from ui.widgets.mapper.graphics.room_icon import RoomIcon
 from ui.widgets.mapper.location_widget import LocationWidget
 from ui.widgets.mapper.map_graph import MapGraph
-from ui.widgets.mapper.graphics.room_icon import RoomIcon
 from ui.widgets.mapper.utils import split_suffix
 
 
@@ -48,7 +48,7 @@ class MapController(QObject):
             os.makedirs(self.profile_path, exist_ok=True)
             temp_path = self.map_file_path + ".tmp"
             with open(temp_path, "wb") as f:
-                pickle.dump(self.global_graph, f, protocol=pickle.HIGHEST_PROTOCOL)
+                pickle.dump(self.global_graph, f, protocol=pickle.HIGHEST_PROTOCOL) # type: ignore
             os.replace(temp_path, self.map_file_path)
         except Exception as e:
             print(f"Error saving map: {e}")
@@ -216,14 +216,7 @@ class MapController(QObject):
                 if not icon_anchor:
                     continue
 
-                # Recompute multi-exit for anchor
                 room_anchor = self.global_graph.get_room(anchor)
-                base_dirs = [split_suffix(d)[0] for d in room_anchor.links]
-                counts = Counter(base_dirs)
-                multi_map_anchor = {
-                    dst: counts[split_suffix(dir_txt)[0]] > 1
-                    for dir_txt, dst in room_anchor.links.items()
-                }
 
                 if other in self._local_positions:
                     icon_other = self._local_icons.get(other)

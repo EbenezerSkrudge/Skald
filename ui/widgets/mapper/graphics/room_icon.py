@@ -1,9 +1,9 @@
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from math import sqrt
 
 from PySide6.QtCore import QRectF, Qt, QPointF
 from PySide6.QtGui import QBrush, QPen, QColor, QFontMetrics, QPainter
-from PySide6.QtWidgets import QGraphicsItem
+from PySide6.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QWidget
 
 from ui.widgets.mapper.constants import Z_ROOM_SHAPE, GRID_SIZE, ROOM_SIZE
 from ui.widgets.mapper.utils import get_bold_font, get_terrain_color
@@ -62,12 +62,12 @@ class RoomIcon(QGraphicsItem):
         off = -self._half - self._pad
         return QRectF(off, off, total, total)
 
-    def paint(self, painter: QPainter, option, widget):
+    def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: Optional[QWidget] = None):
         # 1) Unexplored?
         if self.terrain == -1:
             painter.setBrush(self._unexplored_brush)
             painter.setPen(self._border_pen)
-            painter.drawEllipse(-self._half, -self._half,
+            painter.drawEllipse(round(-self._half), round(-self._half),
                                 ROOM_SIZE, ROOM_SIZE)
 
             # question mark, centered
@@ -77,7 +77,7 @@ class RoomIcon(QGraphicsItem):
             br = self._qmark_metrics.boundingRect(qm)
             x = - (br.x() + br.width() / 2)
             y = - (br.y() + br.height() / 2)
-            painter.drawText(x, y, qm)
+            painter.drawText(round(x), round(y), qm)
 
             # selection overlay (circle)
             if self.isSelected():
@@ -85,14 +85,14 @@ class RoomIcon(QGraphicsItem):
                 painter.setBrush(self._sel_brush)
                 size = ROOM_SIZE + self._pad * 2
                 off = -self._half - self._pad
-                painter.drawEllipse(off, off, size, size)
+                painter.drawEllipse(round(off), round(off), size, size)
             return
 
         # 2) Known terrain: colored square
         brush = self._terrain_brushes.get(self.terrain, self._default_brush)
         painter.setBrush(brush)
         painter.setPen(Qt.NoPen)
-        painter.drawRect(-self._half, -self._half, ROOM_SIZE, ROOM_SIZE)
+        painter.drawRect(round(-self._half), round(-self._half), ROOM_SIZE, ROOM_SIZE)
 
         # 3) Selection overlay (square)
         if self.isSelected():
@@ -100,7 +100,7 @@ class RoomIcon(QGraphicsItem):
             painter.setBrush(self._sel_brush)
             size = ROOM_SIZE + self._pad * 2
             off = -self._half - self._pad
-            painter.drawRect(off, off, size, size)
+            painter.drawRect(round(off), round(off), size, size)
 
         # 4) Multi-exit diamond
         if self.exit_vectors:
