@@ -11,61 +11,73 @@ from ui.widgets.mapper.utils import shorten_line, create_arrowhead
 class NonCardinalDirectionConnector(QGraphicsItemGroup):
     """Displays arrows for non-cardinal directions (in, out, up, down) around an icon."""
 
+    _COLOR = QColor("orange")
+    _PEN_LINE = QPen(_COLOR, 3)
+    _PEN_CIRCLE = QPen(_COLOR, 2)
+
     def __init__(self, icon, directions: list[str]):
         super().__init__()
         self.setZValue(Z_ROOM_ICON)
 
-        br = icon.boundingRect()
-        center_scene = icon.mapToScene(br.center())
-        cx, cy = center_scene.x(), center_scene.y()
+        center = icon.mapToScene(icon.boundingRect().center())
+        cx, cy = center.x(), center.y()
 
-        orange = QColor("orange")
-        line_pen = QPen(orange, 3)
+        if set(directions) & {"in", "out"}:
+            self._add_in_out_group(cx, cy, directions)
 
-        if any(d in directions for d in ("in", "out")):
-            io_group = QGraphicsItemGroup(self)
-            circ = QGraphicsEllipseItem(QRectF(-6, -6, 12, 12))
-            circ.setPen(QPen(orange, 2))
-            io_group.addToGroup(circ)
+        if set(directions) & {"up", "down"}:
+            self._add_up_down_group(cx, cy, directions)
 
-            for d in ("in", "out"):
-                if d not in directions:
-                    continue
-                start, end = (
-                    (QPointF(7, 7), QPointF(-2, -2)) if d == "in"
-                    else (QPointF(0, 0), QPointF(9, 9))
-                )
-                se = shorten_line(start, end, 2)
-                io_group.addToGroup(QGraphicsLineItem(start.x(), start.y(), se.x(), se.y()))
-                io_group.addToGroup(create_arrowhead(start, end, orange))
+    def _add_in_out_group(self, cx, cy, directions):
+        circle = QGraphicsEllipseItem(QRectF(cx + 24, cy + 5, 12, 12))
+        circle.setPen(self._PEN_CIRCLE)
+        self.addToGroup(circle)
 
-            io_group.setPos(cx + 30, cy + 11)
-            io_group.setZValue(Z_ROOM_ICON)
+        arrow_defs = {
+            "in":  (QPointF(cx + 37, cy + 18), QPointF(cx + 28, cy + 9)),
+            "out": (QPointF(cx + 30, cy + 11), QPointF(cx + 39, cy + 20)),
+        }
 
-        if any(d in directions for d in ("up", "down")):
-            ud_group = QGraphicsItemGroup(self)
-            for x in (-5, 6):
-                dash = QGraphicsLineItem(x - 1, 0, x, 0)
-                dash.setPen(line_pen)
-                ud_group.addToGroup(dash)
+        for d in ("in", "out"):
+            if d not in directions:
+                continue
+            start, end = arrow_defs[d]
+            se = shorten_line(start, end, 2)
+            shaft = QGraphicsLineItem(start.x(), start.y(), se.x(), se.y())
+            shaft.setPen(self._PEN_LINE)
+            self.addToGroup(shaft)
+            self.addToGroup(create_arrowhead(start, end, self._COLOR))
 
-            for d in ("up", "down"):
-                if d not in directions:
-                    continue
-                y = 6
-                start, end = (
-                    (QPointF(0, y), QPointF(0, -y - 2)) if d == "up"
-                    else (QPointF(0, -y), QPointF(0, y + 2))
-                )
-                se = shorten_line(start, end, 2)
+    def _add_up_down_group(self, cx, cy, directions):
+        base_x = cx + 29
+        base_y = cy - 12
 
-                # create the shaft, then set its pen
-                shaft = QGraphicsLineItem(start.x(), start.y(), se.x(), se.y())
-                shaft.setPen(line_pen)
-                ud_group.addToGroup(shaft)
+        # Add horizontal dashes
+        for x_offset in (-5, 6):
+            x1 = base_x + x_offset - 1
+            x2 = base_x + x_offset
+            dash = QGraphicsLineItem(x1, base_y, x2, base_y)
+            dash.setPen(self._PEN_LINE)
+            self.addToGroup(dash)
 
-                # now the arrow head
-                ud_group.addToGroup(create_arrowhead(start, end, QColor("orange")))
+        # Arrow definitions relative to local origin
+        arrow_defs = {
+            "up": (QPointF(0, 6), QPointF(0, -8)),
+            "down": (QPointF(0, -6), QPointF(0, 8)),
+        }
 
-            ud_group.setPos(cx + 31, cy - 12)
-            ud_group.setZValue(Z_ROOM_ICON)
+        for d in ("up", "down"):
+            if d not in directions:
+                continue
+            local_start, local_end = arrow_defs[d]
+            local_se = shorten_line(local_start, local_end, 2)
+
+            # Offset to scene position
+            start = QPointF(base_x + local_start.x(), base_y + local_start.y())
+            se = QPointF(base_x + local_se.x(), base_y + local_se.y())
+            end = QPointF(base_x + local_end.x(), base_y + local_end.y())
+
+            shaft = QGraphicsLineItem(start.x(), start.y(), se.x(), se.y())
+            shaft.setPen(self._PEN_LINE)
+            self.addToGroup(shaft)
+            self.addToGroup(create_arrowhead(start, end, self._COLOR))

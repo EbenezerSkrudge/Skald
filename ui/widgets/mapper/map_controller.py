@@ -25,23 +25,31 @@ class MapController(QObject):
         self.profile_path = profile_path or os.path.expanduser("~/.skald/default")
         self.map_file_path = os.path.join(self.profile_path, "map.pickle")
 
-        # Debounce timer for saving
         self._save_timer = QTimer()
         self._save_timer.setSingleShot(True)
         self._save_timer.timeout.connect(self.save_map)
 
         self.global_graph = self._load_map() or MapGraph()
         self.local_graph = MapGraph()
-        self._local_positions = {}
-        self._cur_hash = None
 
+        self._cur_hash = None
+        self._prev_links = {}
+        self._local_positions = {}
         self._local_icons = {}
         self.local_connectors = {}
         self._local_drawn_edges = set()
         self._local_border_arrows = []
         self._local_direction_tags = []
         self._marker = None
-        self._prev_links = {}
+
+    def _load_map(self):
+        if os.path.exists(self.map_file_path):
+            try:
+                with open(self.map_file_path, "rb") as f:
+                    return pickle.load(f)
+            except Exception as e:
+                print(f"Error loading map: {e}")
+        return None
 
     def save_map(self):
         try:
@@ -53,14 +61,8 @@ class MapController(QObject):
         except Exception as e:
             print(f"Error saving map: {e}")
 
-    def _load_map(self) -> MapGraph | None:
-        if os.path.exists(self.map_file_path):
-            try:
-                with open(self.map_file_path, "rb") as f:
-                    return pickle.load(f)
-            except Exception as e:
-                print(f"Error loading map: {e}")
-        return None
+    def schedule_save(self):
+        self._save_timer.start(1000)
 
     def on_room_info(self, info: dict):
         room_hash = info.get("hash")
@@ -72,15 +74,26 @@ class MapController(QObject):
         else:
             self._prev_links.clear()
 
-        exits = info.get("exits", {})
-        self.global_graph.add_or_update_room(info, exit_types=exits)
+        self.global_graph.add_or_update_room(info, exit_types=info.get("exits", {}))
 
         prev_hash = self._cur_hash
         self._cur_hash = room_hash
         move_code = self._calculate_move_code(prev_hash, room_hash)
 
         self.build_local_area()
+        self._update_marker(room_hash, move_code)
+        self.render_local_graph()
 
+        self.mapUpdated.emit()
+        self.schedule_save()
+
+    def _calculate_move_code(self, prev_hash, current_hash):
+        if not prev_hash:
+            return None
+        direction = next((d for d, dst in self._prev_links.items() if dst == current_hash), None)
+        return TEXT_TO_NUM.get(split_suffix(direction)[0]) if direction else None
+
+    def _update_marker(self, room_hash, move_code):
         gx, gy = self._local_positions.get(room_hash, (0, 0))
         if not self._marker:
             self._marker = LocationWidget(gx, gy, direction_code=move_code)
@@ -89,33 +102,15 @@ class MapController(QObject):
             self._marker.update_position(gx, gy)
             self._marker.update_direction(move_code)
 
-        self.render_local_graph()
-        self.mapUpdated.emit()
-        self.schedule_save()
-
-    def schedule_save(self):
-        self._save_timer.start(1000)
-
-    def _calculate_move_code(self, prev_hash, current_hash):
-        if not prev_hash:
-            return None
-        movement_direction = next(
-            (d for d, dest in self._prev_links.items() if dest == current_hash),
-            None
-        )
-        if movement_direction:
-            base, _ = split_suffix(movement_direction)
-            return TEXT_TO_NUM.get(base)
-        return None
-
-    def build_local_area(self) -> MapGraph:
-        self.local_graph = MapGraph()
+    def build_local_area(self):
+        self.local_graph.clear()
         self._local_positions.clear()
 
         if not self._cur_hash or not self.global_graph.has_room(self._cur_hash):
-            return self.local_graph
+            return
 
         self._local_positions = self.global_graph.layout_from_root(self._cur_hash)
+
         for h in self._local_positions:
             self.local_graph.add_room(self.global_graph.get_room(h))
 
@@ -124,8 +119,6 @@ class MapController(QObject):
                 if not self.global_graph.is_border(a, b):
                     self.local_graph.connect_rooms(a, b)
 
-        return self.local_graph
-
     def render_local_graph(self):
         scene = self.map.scene()
         self._clear_scene_items(scene)
@@ -133,7 +126,7 @@ class MapController(QObject):
         self._draw_edges(scene)
 
     def _clear_scene_items(self, scene: QGraphicsScene):
-        for item in (*self._local_border_arrows, *self._local_direction_tags):
+        for item in self._local_border_arrows + self._local_direction_tags:
             scene.removeItem(item)
         for icon in self._local_icons.values():
             scene.removeItem(icon)
@@ -151,98 +144,79 @@ class MapController(QObject):
             room = data["room"]
             gx, gy = self._local_positions[room_hash]
             icon = RoomIcon(grid_x=gx, grid_y=gy, short_desc=room.desc, terrain=room.terrain)
-            icon.reset_exit_vectors()  # ✅ Reset before any vectors are added
+            icon.reset_exit_vectors()
             scene.addItem(icon)
             self._local_icons[room_hash] = icon
 
-            tags = [d.lower() for d in room.links if d.lower() in ("in", "out", "up", "down")]
-            if tags:
-                tag = NonCardinalDirectionConnector(icon, tags)
+            special_dirs = [d.lower() for d in room.links if d.lower() in ("in", "out", "up", "down")]
+            if special_dirs:
+                tag = NonCardinalDirectionConnector(icon, special_dirs)
                 scene.addItem(tag)
                 self._local_direction_tags.append(tag)
 
     def _draw_edges(self, scene: QGraphicsScene):
-        """Draw both graphics and borders using the unified Connector class."""
         for a, b in self.global_graph.edges():
             key = frozenset((a, b))
             if key in self._local_drawn_edges:
                 continue
 
-            attrs      = self.global_graph[a][b]
+            conn = None
+
+            attrs = self.global_graph[a][b]
             door_state = attrs.get("door")
-            is_border  = self.global_graph.is_border(a, b)
+            is_border = self.global_graph.is_border(a, b)
 
             icon_a = self._local_icons.get(a)
             icon_b = self._local_icons.get(b)
 
-            # Prepare multi-exit map for room 'a'
-            room_a = self.global_graph.get_room(a)
-            base_dirs = [split_suffix(d)[0] for d in room_a.links]
-            counts = Counter(base_dirs)
-            multi_map_a = {
-                dst: counts[split_suffix(dir_txt)[0]] > 1
-                for dir_txt, dst in room_a.links.items()
-            }
-
-            # Both endpoints visible
             if a in self._local_positions and b in self._local_positions:
                 if not icon_a or not icon_b:
                     continue
-
-                multi_exit = multi_map_a.get(b, False)
-                if multi_exit:
-                    ax, ay = self._local_positions[a]
-                    bx, by = self._local_positions[b]
-                    dx, dy = bx - ax, by - ay
-                    length = (dx ** 2 + dy ** 2) ** 0.5
-                    if length != 0:
-                        icon_a.add_exit_vector(dx / length, dy / length)
-                conn = CardinalDirectionConnector(
-                    icon_a,
-                    icon_b,
-                    door=door_state,
-                    border=is_border,
-                )
-                conn.add_to_scene(scene)
-
-                self.local_connectors[key] = conn
-                self._local_drawn_edges.add(key)
-
-            # Border arrows
+                if self._is_multi_exit(a, b):
+                    self._add_exit_vector(a, b)
+                conn = CardinalDirectionConnector(icon_a, icon_b, door=door_state, border=is_border)
             elif is_border:
-                anchor = a if a in self._local_positions else b
-                other  = b if anchor == a else a
-                icon_anchor = self._local_icons.get(anchor)
-                if not icon_anchor:
-                    continue
+                conn = self._create_border_arrow(a, b, door_state)
 
-                room_anchor = self.global_graph.get_room(anchor)
-
-                if other in self._local_positions:
-                    icon_other = self._local_icons.get(other)
-                    if not icon_other:
-                        continue
-                    kwargs = dict(icon_b=icon_other)
-                else:
-                    # outside-local border
-                    dir_txt = next(
-                        (d for d, dst in room_anchor.links.items() if dst == other),
-                        ""
-                    )
-                    base, _ = split_suffix(dir_txt)
-                    dx, dy = NUM_TO_DELTA.get(TEXT_TO_NUM.get(base, 8), (0, -1))
-                    pos = icon_anchor.scenePos()
-                    kwargs = dict(target_pos=QPointF(
-                        pos.x() + dx * GRID_SIZE,
-                        pos.y() + dy * GRID_SIZE
-                    ))
-
-                conn = CardinalDirectionConnector(
-                    icon_a=icon_anchor,
-                    door=door_state,
-                    border=True,
-                    **kwargs
-                )
+            if conn:
                 conn.add_to_scene(scene)
                 self.local_connectors[key] = conn
                 self._local_drawn_edges.add(key)
+
+    def _is_multi_exit(self, room_hash_a, dest_hash):
+        room = self.global_graph.get_room(room_hash_a)
+        base_dirs = [split_suffix(d)[0] for d in room.links]
+        counts = Counter(base_dirs)
+
+        # Find direction string that links to the target room
+        direction = next((d for d, dst in room.links.items() if dst == dest_hash), None)
+        if not direction:
+            return False  # Can't find a direction to that room
+
+        base = split_suffix(direction)[0]
+        return counts[base] > 1
+
+    def _add_exit_vector(self, a, b):
+        ax, ay = self._local_positions[a]
+        bx, by = self._local_positions[b]
+        dx, dy = bx - ax, by - ay
+        length = (dx ** 2 + dy ** 2) ** 0.5
+        if length:
+            self._local_icons[a].add_exit_vector(dx / length, dy / length)
+
+    def _create_border_arrow(self, a, b, door_state):
+        anchor = a if a in self._local_positions else b
+        other = b if anchor == a else a
+        icon_anchor = self._local_icons.get(anchor)
+        if not icon_anchor:
+            return None
+
+        if other in self._local_positions:
+            return CardinalDirectionConnector(icon_a=icon_anchor, icon_b=self._local_icons.get(other), door=door_state, border=True)
+
+        dir_txt = next((d for d, dst in self.global_graph.get_room(anchor).links.items() if dst == other), "")
+        dx, dy = NUM_TO_DELTA.get(TEXT_TO_NUM.get(split_suffix(dir_txt)[0], 8), (0, -1))
+        pos = icon_anchor.scenePos()
+        target_pos = QPointF(pos.x() + dx * GRID_SIZE, pos.y() + dy * GRID_SIZE)
+
+        return CardinalDirectionConnector(icon_a=icon_anchor, target_pos=target_pos, door=door_state, border=True)
