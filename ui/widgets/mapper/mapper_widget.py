@@ -138,3 +138,9 @@ class MapperWidget(QGraphicsView):
             self._shift_held = False
             self._set_drag_mode()
         super().keyReleaseEvent(event)
+
+    def closeEvent(self, event):
+        # let the controller unhook itself
+        self._scene.controller.cleanup()
+        super().closeEvent(event)
+
