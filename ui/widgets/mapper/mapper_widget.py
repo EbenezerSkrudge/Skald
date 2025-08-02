@@ -83,9 +83,7 @@ class MapperWidget(QGraphicsView):
 
     def _toggle_border(self, a_hash, b_hash, flag):
         self.controller.global_graph.set_border(a_hash, b_hash, flag)
-        self.controller.build_local_area()
         self.controller.render_local_graph()
-        self.controller.mapUpdated.emit()
 
     def wheelEvent(self, event):
         factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15

@@ -83,12 +83,12 @@ class MapController(QObject):
         """Uninstall event filter and disconnect signals when the view goes away."""
         try:
             self.map.viewport().removeEventFilter(self)
-        except Exception:
+        except AttributeError:
             pass
         try:
             self.map.horizontalScrollBar().valueChanged.disconnect(self.render_local_graph)
             self.map.verticalScrollBar().valueChanged.disconnect(self.render_local_graph)
-        except Exception:
+        except AttributeError:
             pass
 
     def eventFilter(self, obj, event):
@@ -171,6 +171,12 @@ class MapController(QObject):
                 self.local_graph.connect_rooms(a, b)
 
     def render_local_graph(self):
+        # recompute positions first
+        if self._cur_hash:
+            self._local_positions = self.global_graph.layout_from_root(self._cur_hash)
+        else:
+            self._local_positions.clear()
+
         scene: QGraphicsScene = self.map.scene()
         self._clear_scene_items(scene)
 
@@ -208,39 +214,48 @@ class MapController(QObject):
                 scene.addItem(tag)
                 self._local_direction_tags.append(tag)
 
-        # draw connectors
+        # draw connectors (corridors, roads, paths, doors, borders)
         for a, b in self.global_graph.edges():
             key = frozenset((a, b))
             if key in self._local_drawn_edges:
                 continue
 
-            attrs = self.global_graph[a][b]
-            door_state = attrs.get("door")
-            is_border = self.global_graph.is_border(a, b)
+            attrs     = self.global_graph[a][b]
+            is_border  = self.global_graph.is_border(a, b)
+            exit_val   = attrs.get("exit_val")   # new exit info: 100=road, 104=path, etc.
 
             icon_a = self._local_icons.get(a)
             icon_b = self._local_icons.get(b)
             conn = None
 
+            # when both endpoints are on-screen, draw a cardinals connector
             if icon_a and icon_b:
                 p1 = QPointF(icon_a.scenePos())
                 p2 = QPointF(icon_b.scenePos())
                 line_rect = QRectF(p1, p2).normalized().adjusted(-1, -1, 1, 1)
                 if not view_rect.intersects(line_rect):
                     continue
+
+                # multi-exits still get split vectors
                 if self._is_multi_exit(a, b):
                     self._add_exit_vector(a, b)
-                conn = CardinalDirectionConnector(icon_a, icon_b,
-                                                  door=door_state,
-                                                  border=is_border)
 
+                # pass the raw exit_val into the connector
+                conn = CardinalDirectionConnector(
+                    icon_a, icon_b,
+                    border=is_border,
+                    exit_val=exit_val
+                )
+
+            # if it's a border edge but not both icons are present
             elif is_border:
                 anchor = icon_a or icon_b
                 if not anchor:
                     continue
                 if not view_rect.intersects(anchor.sceneBoundingRect()):
                     continue
-                conn = self._create_border_arrow(a, b, door_state)
+
+                conn = self._create_border_arrow(a, b)
 
             if conn:
                 conn.add_to_scene(scene)
@@ -283,7 +298,7 @@ class MapController(QObject):
         if length:
             self._local_icons[a].add_exit_vector(dx / length, dy / length)
 
-    def _create_border_arrow(self, a, b, door_state):
+    def _create_border_arrow(self, a, b):
         anchor = a if a in self._local_positions else b
         other = b if anchor == a else a
         icon_anchor = self._local_icons.get(anchor)
@@ -294,7 +309,6 @@ class MapController(QObject):
             return CardinalDirectionConnector(
                 icon_a=icon_anchor,
                 icon_b=self._local_icons[other],
-                door=door_state,
                 border=True
             )
 
@@ -312,6 +326,5 @@ class MapController(QObject):
         return CardinalDirectionConnector(
             icon_a=icon_anchor,
             target_pos=target_pos,
-            door=door_state,
             border=True
         )

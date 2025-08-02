@@ -23,8 +23,9 @@ class MapGraph(nx.Graph):
     """
     A graph of Room instances. Nodes keyed by room.hash.
     Edges may include:
-      - 'border' (bool): prevents traversal
-      - 'door' (str): "open", "closed", or None
+      - 'border'   (bool): prevents traversal
+      - 'door'     (str): "open", "closed", or None
+      - 'exit_val' (int): raw GMCP exit type (100=road, 104=path, 101=open door, -101=closed door, etc.)
     """
 
     def add_room(self, room: Room):
@@ -32,14 +33,19 @@ class MapGraph(nx.Graph):
             self.add_node(room.hash, room=room)
             room.graph_ref = self
 
-    def add_or_update_room(self, info: dict, exit_types: dict[str, int] | None = None):
+    def add_or_update_room(
+        self,
+        info: dict,
+        exit_types: dict[str, int] | None = None
+    ):
         exit_types = exit_types or {}
         room_hash = info.get("hash")
         if not room_hash:
             return
 
-        # Update or create Room
-        room = self.nodes.get(room_hash, {}).get("room")
+        # Update or create the Room node
+        existing_node = self.nodes.get(room_hash, {})
+        room = existing_node.get("room")
         if room:
             room.desc = info.get("short", room.desc)
             room.terrain = info.get("type", room.terrain)
@@ -48,47 +54,82 @@ class MapGraph(nx.Graph):
             room = Room(info)
             self.add_room(room)
 
-        # Link neighbors
+        # Link neighbors with updated attributes
         for dir_txt, dest_hash in (room.links or {}).items():
             if not dest_hash:
                 continue
+            # Ensure the neighbor node exists
             if dest_hash not in self.nodes:
                 self.add_room(Room({"hash": dest_hash}))
 
+            # Retrieve existing edge data, if any
             existing = self.get_edge_data(room_hash, dest_hash, default={})
             had_edge = bool(existing)
             border = existing.get("border", False)
             door = existing.get("door", None)
 
-            # Handle GMCP exit type code
-            match exit_types.get(dir_txt):
-                case 101:  # open door
-                    door = "open"
-                    if not had_edge:
-                        border = False
-                case -101:  # closed door
-                    door = "closed"
-                    if not had_edge:
-                        border = True
+            # Read the raw exit code for this direction
+            code = exit_types.get(dir_txt)
+            exit_val = int(code) if code is not None else None
 
-            self.connect_rooms(room_hash, dest_hash, border=border, door=door)
+            # GMCP codes for doors
+            if exit_val == 101:
+                door = "open"
+                if not had_edge:
+                    border = False
+            elif exit_val == -101:
+                door = "closed"
+                if not had_edge:
+                    border = True
+
+            # For roads (100) and paths (104), we leave door/border as-is,
+            # but we carry exit_val through to visualization.
+            # Exit_val is passed below via connect_rooms.
+
+            self.connect_rooms(
+                src=room_hash,
+                dst=dest_hash,
+                border=border,
+                door=door,
+                exit_val=exit_val
+            )
 
     def has_room(self, room_hash: str) -> bool:
         return room_hash in self.nodes
 
     def get_room(self, room_hash: str) -> Room | None:
-        return self.nodes.get(room_hash, {}).get("room")
+        node = self.nodes.get(room_hash, {})
+        return node.get("room")
 
-    def connect_rooms(self, src: str, dst: str, border: bool = False, door: str | None = None):
+    def connect_rooms(
+        self,
+        src: str,
+        dst: str,
+        border: bool = False,
+        door: str | None = None,
+        exit_val: int | None = None
+    ):
+        """
+        Add or update an edge between src and dst with:
+          - border flag
+          - optional door state
+          - optional exit_val for roads/paths/doors
+        """
         if src in self.nodes and dst in self.nodes:
-            attrs = {"border": border}
+            attrs: dict[str, object] = {"border": border}
             if door is not None:
                 attrs["door"] = door
+            if exit_val is not None:
+                attrs["exit_val"] = exit_val
             self.add_edge(src, dst, **attrs)
 
     def set_border(self, a: str, b: str, border: bool = True):
         if self.has_edge(a, b):
-            self.add_edge(a, b, border=border)
+            # preserve existing door and exit_val
+            existing = self.get_edge_data(a, b)
+            door = existing.get("door")
+            exit_val = existing.get("exit_val")
+            self.connect_rooms(a, b, border=border, door=door, exit_val=exit_val)
 
     def is_border(self, a: str, b: str) -> bool:
         return self.has_edge(a, b) and self[a][b].get("border", False)
@@ -97,8 +138,8 @@ class MapGraph(nx.Graph):
         if root_hash not in self.nodes:
             return {}
 
-        positions = {root_hash: (0, 0)}
-        coord_owner = {(0, 0): root_hash}
+        positions: dict[str, tuple[int, int]] = {root_hash: (0, 0)}
+        coord_owner: dict[tuple[int, int], str] = {(0, 0): root_hash}
         queue = collections.deque([root_hash])
 
         while queue:
