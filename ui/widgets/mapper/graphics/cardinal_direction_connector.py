@@ -10,14 +10,15 @@ from PySide6.QtWidgets import (
     QGraphicsRectItem, QGraphicsPolygonItem
 )
 
+from game.terrain import PATH_COLOUR, ROAD_COLOUR
 from ui.widgets.mapper.constants import Z_CONNECTOR, Z_ROOM_SHAPE
 
 
 class CardinalDirectionConnector(QGraphicsItem):
     # GMCP exit codes
-    ROAD_EXIT    = 100
-    PATH_EXIT    = 104
-    DOOR_OPEN    = 101
+    ROAD_EXIT    =  100
+    PATH_EXIT    =  104
+    DOOR_OPEN    =  101
     DOOR_CLOSED  = -101
 
     # Colors
@@ -65,9 +66,9 @@ class CardinalDirectionConnector(QGraphicsItem):
         # base line width
         lw = line_width
         if self.exit_val == self.ROAD_EXIT:
-            lw *= 1.5
+            lw *= 5
         elif self.exit_val == self.PATH_EXIT:
-            lw *= 1.5
+            lw *= 2.5
 
         base_color = self._COLOR_BORDER if border else self._COLOR_CONNECTOR
         self._pen_normal = QPen(base_color, lw)
@@ -75,9 +76,9 @@ class CardinalDirectionConnector(QGraphicsItem):
 
         # style exits
         if self.exit_val == self.PATH_EXIT:
-            self._pen_normal.setStyle(Qt.DashLine)
+            self._pen_normal.setColor(QColor(PATH_COLOUR))
         elif self.exit_val == self.ROAD_EXIT:
-            self._pen_normal.setColor(QColor("#878686"))
+            self._pen_normal.setColor(QColor(ROAD_COLOUR))
 
         # graphics setup
         self.setZValue(Z_CONNECTOR)

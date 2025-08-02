@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
 
 from ui.widgets.mapper.graphics.cardinal_direction_connector import CardinalDirectionConnector
 from ui.widgets.mapper.constants import GRID_SIZE
-from ui.widgets.mapper.map_controller import MapController
+from ui.widgets.mapper.controller.map_controller import MapController
 
 
 class MapperWidget(QGraphicsView):
@@ -38,20 +38,12 @@ class MapperWidget(QGraphicsView):
             # — 1) normal ConnectorItem? —
             if isinstance(it, CardinalDirectionConnector):
                 # find its edge in _local_connectors
-                for edge, conn in self.controller.local_connectors.items():
+                for edge, conn in self.controller.renderer.get_connectors().items():
                     if conn is it:
                         a_hash, b_hash = edge
                         break
                 else:
                     continue
-
-            # # — 2) border arrow? —
-            # elif isinstance(it, BorderConnectorItem):
-            #     # read the attributes we stored on creation
-            #     a_hash = getattr(it, "a_hash", None)
-            #     b_hash = getattr(it, "b_hash", None)
-            #     if not (a_hash and b_hash):
-            #         continue
 
             else:
                 continue  # not a connector we care about
@@ -60,7 +52,7 @@ class MapperWidget(QGraphicsView):
             a, b = sorted((a_hash, b_hash))
 
             # Build menu
-            is_border = self.controller.global_graph.is_border(a, b)
+            is_border = self.controller.state.global_graph.is_border(a, b)
             menu = QMenu(self)
             label = "Remove Border" if is_border else "Set Border"
             action = QAction(label, self)
@@ -82,8 +74,8 @@ class MapperWidget(QGraphicsView):
         return a_hash, b_hash
 
     def _toggle_border(self, a_hash, b_hash, flag):
-        self.controller.global_graph.set_border(a_hash, b_hash, flag)
-        self.controller.render_local_graph()
+        self.controller.state.global_graph.set_border(a_hash, b_hash, flag)
+        self.controller.render()
 
     def wheelEvent(self, event):
         factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
@@ -115,7 +107,7 @@ class MapperWidget(QGraphicsView):
             return
 
         for icon in selected:
-            for room_hash, data in self.controller.global_graph.nodes(data=True):
+            for room_hash, data in self.controller.state.global_graph.nodes(data=True):
                 if data["room"].icon is icon:
                     data["room"].area = new_area
                     break

@@ -18,3 +18,6 @@ TERRAIN_TYPES = {
     12: ("jungle",      "#40826d"),
     13: ("cave",        "#353839"),
 }
+
+ROAD_COLOUR = "#A2A0A0"
+PATH_COLOUR = "#6F4E37"
