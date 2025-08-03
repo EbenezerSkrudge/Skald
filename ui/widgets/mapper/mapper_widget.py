@@ -24,6 +24,13 @@ class MapperWidget(QGraphicsView):
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self.setResizeAnchor(QGraphicsView.AnchorViewCenter)
         self.setBackgroundBrush(Qt.black)
+        self.setStyleSheet("""
+            QScrollBar:horizontal, QScrollBar:vertical {
+                height: 1px;
+                width: 1px;
+                background: transparent;
+            }
+        """)
 
         self._zoom = 0
         self._shift_held = False
@@ -119,14 +126,6 @@ class MapperWidget(QGraphicsView):
 
     def center_on_item(self, item):
         self.centerOn(item)
-
-    def ensure_padding(self):
-        if not self.scene():
-            return
-        rect = self.scene().itemsBoundingRect()
-        half_w = self.viewport().width() / 2
-        half_h = self.viewport().height() / 2
-        self.scene().setSceneRect(rect.adjusted(-half_w, -half_h, half_w, half_h))
 
     def closeEvent(self, event):
         # let the controller unhook itself

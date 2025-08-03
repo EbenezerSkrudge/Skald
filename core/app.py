@@ -155,13 +155,12 @@ class App:
 
         match pkg:
             case "LID":
-                if "type" not in self.gmcp_data["LID"]:
+                if "type" not in self.gmcp_data["LID"]:  # Homogenize type data when missing
                     self.gmcp_data["LID"]["type"] = 0
                 self.fire_event("on_location_update", parsed)
 
             case "CVD":
-                # TODO: add on_vitals_update event handler
-                pass
+                self.fire_event("on_vitals_update", parsed)
 
             case "MCD":
                 # TODO: add on_message_update event handler

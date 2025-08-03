@@ -2,6 +2,7 @@
 
 from collections import Counter
 from PySide6.QtCore import QRectF, QPointF
+from PySide6.QtWidgets import QGraphicsRectItem
 
 from ui.widgets.mapper.constants import GRID_SIZE, TEXT_TO_NUM, NUM_TO_DELTA
 from ui.widgets.mapper.graphics.room_icon import RoomIcon
@@ -12,6 +13,8 @@ from ui.widgets.mapper.utils import split_suffix
 
 
 class MapRenderer:
+    ANCHOR_DISTANCE = 50000  # You can tune this or compute dynamically
+
     def __init__(self, map_view, state):
         self.map = map_view
         self.state = state
@@ -21,18 +24,10 @@ class MapRenderer:
         self._drawn_edges = set()
         self._tags = []
         self._borders = []
+        self._anchors = []
 
-    def render(self, root_hash, positions, preserve_selection=False):
+    def render(self, root_hash, positions):
         scene = self.map.scene()
-
-        # 🔒 Preserve selection before clearing
-        selected_hashes = set()
-        if preserve_selection:
-            selected_hashes = {
-                getattr(item, "room_hash", None)
-                for item in scene.selectedItems()
-                if isinstance(item, RoomIcon)
-            }
 
         self._clear_scene()
         if not root_hash:
@@ -73,12 +68,7 @@ class MapRenderer:
                 self._connectors[key] = conn
                 self._drawn_edges.add(key)
 
-        # ✅ Restore selection after render
-        if preserve_selection:
-            for room_hash in selected_hashes:
-                icon = self._icons.get(room_hash)
-                if icon:
-                    icon.setSelected(True)
+        self._add_pan_anchors(positions)
 
     def update_marker(self, room_hash, move_code):
         x, y = self.state.global_graph.layout_from_root(room_hash).get(room_hash, (0, 0))
@@ -89,6 +79,8 @@ class MapRenderer:
             self._marker = LocationWidget(x, y, direction_code=move_code)
             self.map.scene().addItem(self._marker)
 
+        self.map.centerOn(self._marker)
+
     def get_connectors(self):
         return self._connectors
 
@@ -97,7 +89,7 @@ class MapRenderer:
 
     def _clear_scene(self):
         scene = self.map.scene()
-        for group in (self._icons.values(), self._connectors.values(), self._tags, self._borders):
+        for group in (self._icons.values(), self._connectors.values(), self._tags, self._borders, self._anchors):
             for item in group:
                 scene.removeItem(item)
 
@@ -106,6 +98,7 @@ class MapRenderer:
         self._tags.clear()
         self._borders.clear()
         self._drawn_edges.clear()
+        self._anchors.clear()
 
     def _add_icon(self, scene, room_hash, gx, gy):
         room = self.state.global_graph.get_room(room_hash)
@@ -142,7 +135,6 @@ class MapRenderer:
         if not icon:
             return None
 
-        # 🔍 Fetch exit_val from graph attributes
         attrs = self.state.global_graph[a][b]
         exit_val = attrs.get("exit_val")
 
@@ -154,5 +146,23 @@ class MapRenderer:
         dx, dy = NUM_TO_DELTA.get(code, (0, -1))
         target = icon.scenePos() + QPointF(dx * GRID_SIZE, dy * GRID_SIZE)
 
-        # ✅ pass exit_val here too
         return CardinalDirectionConnector(icon, target_pos=target, border=True, exit_val=exit_val)
+
+    def _add_pan_anchors(self, positions):
+        scene = self.map.scene()
+        size = 1
+        distance = self.ANCHOR_DISTANCE
+
+        anchors = [
+            QPointF(-distance, -distance),
+            QPointF(distance, -distance),
+            QPointF(-distance, distance),
+            QPointF(distance, distance),
+        ]
+
+        for pos in anchors:
+            anchor = QGraphicsRectItem(pos.x(), pos.y(), size, size)
+            anchor.setVisible(False)
+            anchor.setFlag(QGraphicsRectItem.ItemIgnoresTransformations, True)
+            scene.addItem(anchor)
+            self._anchors.append(anchor)
