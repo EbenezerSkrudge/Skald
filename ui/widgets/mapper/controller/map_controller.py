@@ -6,6 +6,8 @@ from ui.widgets.mapper.controller.map_layout_engine import MapLayoutEngine
 from ui.widgets.mapper.controller.map_renderer import MapRenderer
 from ui.widgets.mapper.controller.map_state_manager import MapStateManager
 
+import shiboken6
+
 
 class MapController(QObject):
     mapUpdated = Signal()
@@ -40,7 +42,11 @@ class MapController(QObject):
         self._save_timer.start(1000)
 
     def eventFilter(self, obj, event):
-        if self.map and obj == self.map.viewport() and event.type() == QEvent.Resize:
+        if not shiboken6.isValid(self.map):
+            return False
+
+        viewport = self.map.viewport()
+        if shiboken6.isValid(viewport) and obj == viewport and event.type() == QEvent.Resize:
             try:
                 self.render()
             except RuntimeError:
