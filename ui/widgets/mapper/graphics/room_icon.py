@@ -35,18 +35,26 @@ class RoomIcon(QGraphicsItem):
     _qmark_font = get_bold_font(ROOM_SIZE * 0.5)
     _qmark_metrics = QFontMetrics(_qmark_font)
 
-    def __init__(self, grid_x: int, grid_y: int, short_desc: str, terrain: int):
+    def __init__(self, room_hash: str, grid_x: int, grid_y: int, short_desc: str, terrain: int):
         super().__init__()
         self.grid_x = grid_x
         self.grid_y = grid_y
         self.terrain = terrain  # -1 = unexplored, 0–13 = known
+        self.room_hash = room_hash
         self.exit_vectors: List[Tuple[float, float]] = []
 
         self.setToolTip(short_desc)
         self.setFlag(QGraphicsItem.ItemIsSelectable, True)
-        self.setAcceptedMouseButtons(Qt.RightButton)
+        self.setAcceptedMouseButtons(Qt.AllButtons)
+        self.setAcceptHoverEvents(True)
+        self.setFlag(QGraphicsItem.ItemIsSelectable, True)
+        self.setFlag(QGraphicsItem.ItemIsFocusable, True)
+
         self.setZValue(Z_ROOM_SHAPE + 1)
         self.setPos(grid_x * GRID_SIZE, grid_y * GRID_SIZE)
+
+        self.setAcceptHoverEvents(True)
+        self._hovered = False
 
     def boundingRect(self) -> QRectF:
         size = ROOM_SIZE + self._PAD * 2
@@ -64,6 +72,9 @@ class RoomIcon(QGraphicsItem):
 
         if self.exit_vectors:
             self._paint_exit_diamond(painter)
+
+        if self._hovered:
+            self._paint_hover_overlay(painter)
 
     def _paint_unexplored(self, painter: QPainter):
         painter.setBrush(self._unexplored_brush)
@@ -126,3 +137,26 @@ class RoomIcon(QGraphicsItem):
         sy = sum(y for _, y in self.exit_vectors)
         length = sqrt(sx * sx + sy * sy)
         return (sx / length, sy / length) if length else (0.0, -1.0)
+
+    def hoverEnterEvent(self, event):
+        self._hovered = True
+        self.update()
+
+    def hoverLeaveEvent(self, event):
+        self._hovered = False
+        self.update()
+
+    def _paint_hover_overlay(self, painter: QPainter):
+        hover_pen = QPen(Qt.yellow, 2, Qt.DashLine)
+        hover_brush = QBrush(QColor(255, 255, 0, 40))  # translucent yellow
+
+        painter.setPen(hover_pen)
+        painter.setBrush(hover_brush)
+
+        size = ROOM_SIZE + self._PAD * 2
+        offset = -self._HALF - self._PAD
+
+        if self.terrain == -1:
+            painter.drawEllipse(round(offset), round(offset), size, size)
+        else:
+            painter.drawRect(round(offset), round(offset), size, size)

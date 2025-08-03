@@ -26,17 +26,21 @@ class MapController(QObject):
 
     def cleanup(self):
         try:
-            self.map.viewport().removeEventFilter(self)
+            if self.map and self.map.viewport():
+                self.map.viewport().removeEventFilter(self)
             self.map.horizontalScrollBar().valueChanged.disconnect(self.render)
             self.map.verticalScrollBar().valueChanged.disconnect(self.render)
-        except AttributeError:
+        except (AttributeError, RuntimeError):
             pass
+
+        # 🔒 Prevent future access to deleted widget
+        self.map = None
 
     def schedule_save(self):
         self._save_timer.start(1000)
 
     def eventFilter(self, obj, event):
-        if obj == self.map.viewport() and event.type() == QEvent.Resize:
+        if self.map and obj == self.map.viewport() and event.type() == QEvent.Resize:
             try:
                 self.render()
             except RuntimeError:

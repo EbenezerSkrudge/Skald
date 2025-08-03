@@ -22,19 +22,31 @@ class MapRenderer:
         self._tags = []
         self._borders = []
 
-    def render(self, root_hash, positions):
+    def render(self, root_hash, positions, preserve_selection=False):
+        scene = self.map.scene()
+
+        # 🔒 Preserve selection before clearing
+        selected_hashes = set()
+        if preserve_selection:
+            selected_hashes = {
+                getattr(item, "room_hash", None)
+                for item in scene.selectedItems()
+                if isinstance(item, RoomIcon)
+            }
+
         self._clear_scene()
         if not root_hash:
             return
 
-        scene = self.map.scene()
         view_rect = self._get_view_rect()
 
+        # 🧱 Add room icons
         for room_hash, (gx, gy) in positions.items():
             icon_rect = QRectF(gx * GRID_SIZE, gy * GRID_SIZE, GRID_SIZE, GRID_SIZE)
             if view_rect.intersects(icon_rect):
                 self._add_icon(scene, room_hash, gx, gy)
 
+        # 🔗 Add connectors
         for a, b in self.state.global_graph.edges():
             key = frozenset((a, b))
             if key in self._drawn_edges:
@@ -47,7 +59,8 @@ class MapRenderer:
             conn = None
 
             if icon_a and icon_b:
-                if view_rect.intersects(QRectF(icon_a.scenePos(), icon_b.scenePos()).normalized().adjusted(-1, -1, 1, 1)):
+                if view_rect.intersects(
+                        QRectF(icon_a.scenePos(), icon_b.scenePos()).normalized().adjusted(-1, -1, 1, 1)):
                     if self._is_multi_exit(a, b):
                         self._add_exit_vector(a, b, positions)
                     conn = CardinalDirectionConnector(icon_a, icon_b, border=is_border, exit_val=exit_val)
@@ -59,6 +72,13 @@ class MapRenderer:
                 conn.add_to_scene(scene)
                 self._connectors[key] = conn
                 self._drawn_edges.add(key)
+
+        # ✅ Restore selection after render
+        if preserve_selection:
+            for room_hash in selected_hashes:
+                icon = self._icons.get(room_hash)
+                if icon:
+                    icon.setSelected(True)
 
     def update_marker(self, room_hash, move_code):
         x, y = self.state.global_graph.layout_from_root(room_hash).get(room_hash, (0, 0))
@@ -89,7 +109,7 @@ class MapRenderer:
 
     def _add_icon(self, scene, room_hash, gx, gy):
         room = self.state.global_graph.get_room(room_hash)
-        icon = RoomIcon(gx, gy, room.desc, room.terrain)
+        icon = RoomIcon(room_hash, gx, gy, room.desc, room.terrain)
         icon.reset_exit_vectors()
         scene.addItem(icon)
         self._icons[room_hash] = icon

@@ -4,12 +4,13 @@ from typing import Optional
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QPainter, QAction
 from PySide6.QtWidgets import (
-    QGraphicsScene, QGraphicsView, QInputDialog, QMenu
+    QGraphicsScene, QGraphicsView, QMenu
 )
 
-from ui.widgets.mapper.graphics.cardinal_direction_connector import CardinalDirectionConnector
 from ui.widgets.mapper.constants import GRID_SIZE
 from ui.widgets.mapper.controller.map_controller import MapController
+from ui.widgets.mapper.graphics.cardinal_direction_connector import CardinalDirectionConnector
+from ui.widgets.mapper.graphics.room_icon import RoomIcon
 
 
 class MapperWidget(QGraphicsView):
@@ -35,6 +36,24 @@ class MapperWidget(QGraphicsView):
         items = self.scene().items(scene_pt)
 
         for it in items:
+            # — 0) RoomIcon? —
+            if isinstance(it, RoomIcon):
+                room_icon = it
+
+                room_hash = getattr(room_icon, "room_hash", None)
+                if room_hash is None or room_hash not in self.controller.state.global_graph:
+                    continue
+
+                if room_hash is None:
+                    continue
+
+                menu = QMenu(self)
+                delete_action = QAction("Delete Room", self)
+                delete_action.triggered.connect(lambda _, h=room_hash: self._delete_room(h))
+                menu.addAction(delete_action)
+                menu.exec_(event.globalPos())
+                return
+
             # — 1) normal ConnectorItem? —
             if isinstance(it, CardinalDirectionConnector):
                 # find its edge in _local_connectors
@@ -77,6 +96,19 @@ class MapperWidget(QGraphicsView):
         self.controller.state.global_graph.set_border(a_hash, b_hash, flag)
         self.controller.render()
 
+    def _delete_room(self, room_hash: str):
+        graph = self.controller.state.global_graph
+
+        if room_hash not in graph:
+            return
+
+        # Remove from graph
+        graph.remove_node(room_hash)
+
+        # Re-render map
+        self.controller.render()
+        self.controller.mapUpdated.emit()
+
     def wheelEvent(self, event):
         factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
         self._zoom += 1 if factor > 1 else -1
@@ -96,41 +128,7 @@ class MapperWidget(QGraphicsView):
         half_h = self.viewport().height() / 2
         self.scene().setSceneRect(rect.adjusted(-half_w, -half_h, half_w, half_h))
 
-    def bulk_set_area(self):
-        selected = [i for i in self.scene().selectedItems() if type(i).__name__ == "RoomIcon"]
-        if not selected:
-            return
-
-        text, ok = QInputDialog.getText(self, "Set Area", f"Assign area to {len(selected)} selected rooms:")
-        new_area = text.strip()
-        if not ok or not new_area:
-            return
-
-        for icon in selected:
-            for room_hash, data in self.controller.state.global_graph.nodes(data=True):
-                if data["room"].icon is icon:
-                    data["room"].area = new_area
-                    break
-
-        self.controller.mapUpdated.emit()
-
-    def _set_drag_mode(self):
-        self.setDragMode(QGraphicsView.RubberBandDrag if self._shift_held else QGraphicsView.ScrollHandDrag)
-
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Shift:
-            self._shift_held = True
-            self._set_drag_mode()
-        super().keyPressEvent(event)
-
-    def keyReleaseEvent(self, event):
-        if event.key() == Qt.Key_Shift:
-            self._shift_held = False
-            self._set_drag_mode()
-        super().keyReleaseEvent(event)
-
     def closeEvent(self, event):
         # let the controller unhook itself
         self._scene.controller.cleanup()
         super().closeEvent(event)
-
