@@ -15,3 +15,15 @@ def register_system_triggers(manager: TriggerManager):
         enabled=True,
         priority=0
     )
+
+    def _on_inventory_block(match, ctx):
+        signals.on_inventory_information.emit(match)
+
+    manager.add_trigger(
+        name="inventory_block",
+        regex=r"(?s)^You (?:are wielding|are wearing|are carrying|do not carry anything).*",
+        action=_on_inventory_block,
+        enabled=True,
+        priority=0
+    )
+

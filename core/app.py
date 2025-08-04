@@ -139,8 +139,8 @@ class App:
     # ─── Incoming Data Handlers ─────────────────────
 
     def _on_data(self, text: str):
-        self.main_window.console.echo(text)
         self.trigger_manager.check_triggers(text)
+        self.main_window.console.echo(text)
 
     def _on_gmcp(self, pkg: str, payload):
         log.info(f"[>GMCP] {pkg} = {payload}")
