@@ -7,16 +7,17 @@ from typing import Optional
 
 from PySide6.QtWidgets import QApplication
 
-from core.alias_manager import AliasManager
+from core.managers.alias_manager import AliasManager
 from core.config import HOST, PORT
-from core.connection import MudConnection
-from core.db import init_db
-from core.script_manager import ScriptManager
+from core.connection.connection import MudConnection
+from core.managers.inventory import InventoryManager
+from data.db import init_db
+from core.managers.script_manager import ScriptManager
 from core.settings import load_settings
 from core.signals import signals
-from core.system_triggers import register_system_triggers
-from core.timer_manager import TimerManager
-from core.trigger_manager import TriggerManager
+from core.triggers.system_triggers import register_system_triggers
+from core.managers.timer_manager import TimerManager
+from core.managers.trigger_manager import TriggerManager
 from ui.keymap import KeyMapper
 from ui.windows.main_window import MainWindow
 from ui.windows.profile_manager import ProfileManager
@@ -54,6 +55,8 @@ class App:
         self.timer_manager = None
         self.trigger_manager = None
         self.script_manager = None
+        self.inventory_manager = None
+        self.keymapper = None
 
         self.gmcp_data = {}
 
@@ -63,9 +66,6 @@ class App:
 
         self._init_connection_events()
         signals.on_login.connect(self._on_login)
-
-        self.keymapper = KeyMapper(self)
-        self.keymapper.install()
 
     def start(self):
         pm = ProfileManager(self)
@@ -78,6 +78,9 @@ class App:
         self.settings = load_settings(profile_path)
         init_db(profile_path / "data.sqlite")
 
+        self.keymapper = KeyMapper(self)
+        self.keymapper.install()
+
         self._init_managers()
         self._init_main_window()
         self.connection.connect_to_host(HOST, PORT)
@@ -87,6 +90,8 @@ class App:
         self.timer_manager = TimerManager(self)
         self.trigger_manager = TriggerManager(self)
         self.script_manager = ScriptManager(self, self.trigger_manager)
+        self.inventory_manager = InventoryManager(debug=True)
+
         register_system_triggers(self.trigger_manager)
 
     def _init_main_window(self):
@@ -167,7 +172,7 @@ class App:
                 pass
 
     def _on_negotiation(self, cmd_value: int, opt: int):
-        from core.telnet import TelnetCmd
+        from core.connection.connection import TelnetCmd
 
         if opt == TelnetCmd.ECHO:
             cmd = TelnetCmd(cmd_value)

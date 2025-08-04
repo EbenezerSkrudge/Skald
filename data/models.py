@@ -2,9 +2,9 @@
 
 from datetime import datetime, timezone
 
-from pony.orm import Required, Optional, composite_index
+from pony.orm import Required, Optional, composite_index, composite_key
 
-from core.db import db
+from data.db import db
 
 
 class Migration(db.Entity):
@@ -29,3 +29,12 @@ class Script(db.Entity):
 
     # Pony will now register this index on the same `db`
     composite_index(category, priority)
+
+
+class KeyBinding(db.Entity):
+    key = Required(str)
+    command = Required(str)
+    context = Optional(str)
+
+    # Enforce uniqueness on (key, context)
+    composite_key(key, context)

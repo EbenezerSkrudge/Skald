@@ -7,7 +7,7 @@ from pathlib import Path
 import networkx as nx
 
 from ui.widgets.mapper.constants import TEXT_TO_DELTA
-from ui.widgets.mapper.room import Room
+from ui.widgets.mapper.controller.room import Room
 
 
 def _strip_vertical_suffix(direction: str) -> str:

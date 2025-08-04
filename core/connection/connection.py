@@ -7,7 +7,7 @@ from typing import Optional
 from PySide6.QtCore import QObject, Signal, Slot, QTimer
 from PySide6.QtNetwork import QTcpSocket, QAbstractSocket
 
-from core.telnet import TelnetParser, TelnetCmd
+from core.connection.telnet import TelnetParser, TelnetCmd
 
 log = logging.getLogger(__name__)
 

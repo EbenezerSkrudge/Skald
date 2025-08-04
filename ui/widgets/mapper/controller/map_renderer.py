@@ -8,7 +8,7 @@ from ui.widgets.mapper.constants import GRID_SIZE, TEXT_TO_NUM, NUM_TO_DELTA
 from ui.widgets.mapper.graphics.room_icon import RoomIcon
 from ui.widgets.mapper.graphics.cardinal_direction_connector import CardinalDirectionConnector
 from ui.widgets.mapper.graphics.non_cardinal_direction_connector import NonCardinalDirectionConnector
-from ui.widgets.mapper.location_widget import LocationWidget
+from ui.widgets.mapper.graphics.location_widget import LocationWidget
 from ui.widgets.mapper.utils import split_suffix
 
 
@@ -68,7 +68,7 @@ class MapRenderer:
                 self._connectors[key] = conn
                 self._drawn_edges.add(key)
 
-        self._add_pan_anchors(positions)
+        self._add_pan_anchors()
 
     def update_marker(self, room_hash, move_code):
         x, y = self.state.global_graph.layout_from_root(room_hash).get(room_hash, (0, 0))
@@ -148,7 +148,7 @@ class MapRenderer:
 
         return CardinalDirectionConnector(icon, target_pos=target, border=True, exit_val=exit_val)
 
-    def _add_pan_anchors(self, positions):
+    def _add_pan_anchors(self):
         scene = self.map.scene()
         size = 1
         distance = self.ANCHOR_DISTANCE

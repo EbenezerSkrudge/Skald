@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.config import PROFILE_BASE_PATH
-from core.db import init_db
+from data.db import init_db
 from core.settings import save_settings
 from core.utils import is_valid_profile
 

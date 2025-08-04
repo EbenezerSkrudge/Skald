@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 from pony.orm import db_session
 
 from core.context import Context
-from core.script_manager import ScriptManager
+from core.managers.script_manager import ScriptManager
 from data.models import Script
 from ui.widgets.code_editor import CodeEditor
 

@@ -10,7 +10,7 @@ from data.models import Script
 
 if TYPE_CHECKING:
     from core.app import App
-    from core.trigger_manager import TriggerManager
+    from core.managers.trigger_manager import TriggerManager
 
 
 class ScriptManager:

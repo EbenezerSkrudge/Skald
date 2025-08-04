@@ -4,7 +4,7 @@ from typing import List, Optional
 from pony.orm import db_session
 
 from core.context import Context
-from core.trigger import Trigger as TriggerData
+from core.triggers.trigger import Trigger as TriggerData
 from data.models import Script  # Pony entity for triggers
 
 

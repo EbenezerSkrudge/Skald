@@ -2,7 +2,7 @@
 
 import os
 import pickle
-from ui.widgets.mapper.map_graph import MapGraph
+from ui.widgets.mapper.controller.map_graph import MapGraph
 from ui.widgets.mapper.utils import split_suffix
 from ui.widgets.mapper.constants import TEXT_TO_NUM
 

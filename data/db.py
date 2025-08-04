@@ -4,6 +4,7 @@ from pathlib import Path
 from sqlite3 import connect
 
 from pony.orm import Database
+from data.models import *
 
 db = Database()
 

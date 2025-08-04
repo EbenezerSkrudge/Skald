@@ -108,6 +108,11 @@ class MainWindow(QMainWindow):
         menu = self.menuBar()
 
         client_menu = menu.addMenu("&Client")
+
+        settings_action = QAction("Settings", self)
+        settings_action.triggered.connect(self._open_settings_window)
+        client_menu.addAction(settings_action)
+
         exit_action = QAction("E&xit", self)
         exit_action.triggered.connect(self.close)
         client_menu.addAction(exit_action)
@@ -191,3 +196,12 @@ class MainWindow(QMainWindow):
         self.trigger_window.show()
         self.trigger_window.raise_()
         self.trigger_window.activateWindow()
+
+    def _open_settings_window(self):
+        if not hasattr(self, "settings_window"):
+            from ui.windows.settings_window import SettingsWindow
+            self.settings_window = SettingsWindow(parent=self, app=self.app)
+        self.settings_window.show()
+        self.settings_window.raise_()
+        self.settings_window.activateWindow()
+

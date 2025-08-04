@@ -1,7 +1,6 @@
 # ui/widgets/vitals/vitals_widget.py
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QProgressBar
-from PySide6.QtCore import Qt
 
 
 class VitalsWidget(QWidget):

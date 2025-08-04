@@ -1,7 +1,7 @@
 # core/system_triggers.py
 
 from core.signals import signals
-from core.trigger_manager import TriggerManager
+from core.managers.trigger_manager import TriggerManager
 
 
 def register_system_triggers(manager: TriggerManager):
@@ -16,7 +16,8 @@ def register_system_triggers(manager: TriggerManager):
         priority=0
     )
 
-    def _on_inventory_block(match, ctx):
+    def _on_inventory_block(match, _ctx):
+        # Emit raw inventory block to be handled by InventoryManager
         signals.on_inventory_information.emit(match)
 
     manager.add_trigger(
@@ -26,4 +27,3 @@ def register_system_triggers(manager: TriggerManager):
         enabled=True,
         priority=0
     )
-
