@@ -11,6 +11,7 @@ from core.managers.alias_manager import AliasManager
 from core.config import HOST, PORT
 from core.connection.connection import MudConnection
 from core.managers.inventory import InventoryManager
+from core.managers.keymap_manager import KeymapManager
 from data.db import init_db
 from core.managers.script_manager import ScriptManager
 from core.settings import load_settings
@@ -18,7 +19,7 @@ from core.signals import signals
 from core.triggers.system_triggers import register_system_triggers
 from core.managers.timer_manager import TimerManager
 from core.managers.trigger_manager import TriggerManager
-from ui.keymap import KeyMapper
+#from ui.keymap import KeyMapper
 from ui.windows.main_window import MainWindow
 from ui.windows.profile_manager import ProfileManager
 
@@ -56,7 +57,7 @@ class App:
         self.trigger_manager = None
         self.script_manager = None
         self.inventory_manager = None
-        self.keymapper = None
+        self.keymap_manager = None
 
         self.gmcp_data = {}
 
@@ -78,9 +79,6 @@ class App:
         self.settings = load_settings(profile_path)
         init_db(profile_path / "data.sqlite")
 
-        self.keymapper = KeyMapper(self)
-        self.keymapper.install()
-
         self._init_managers()
         self._init_main_window()
         self.connection.connect_to_host(HOST, PORT)
@@ -91,6 +89,7 @@ class App:
         self.trigger_manager = TriggerManager(self)
         self.script_manager = ScriptManager(self, self.trigger_manager)
         self.inventory_manager = InventoryManager(debug=True)
+        self.keymap_manager = KeymapManager(self)
 
         register_system_triggers(self.trigger_manager)
 
