@@ -1,14 +1,14 @@
-# ui/widgets/inventory/inventory_widget.py
+from enum import Enum
+from typing import Optional
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QTabWidget, QComboBox,
     QTextBrowser, QScrollArea, QLabel
 )
-from PySide6.QtCore import Qt
-from enum import Enum
 
-from core.signals import signals
 from core.managers.inventory_manager import InventoryItem, Inventory
+from core.signals import signals
 
 
 class SortMode(Enum):
@@ -19,42 +19,61 @@ class SortMode(Enum):
 
 
 class InventoryWidget(QWidget):
-    def __init__(self, inventory_manager, parent=None):
+    def __init__(self, inventory_manager, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.inventory_manager = inventory_manager
-        self._location_map = {
-            "carried": "Carried",
-            "wielded": "Equipped",
-            "worn":    "Equipped",
-        }
-
+        self._sort_mode = SortMode.NAME_ASC
         self._text_widgets: dict[str, QTextBrowser] = {}
         self._items_by_tab: dict[str, list[InventoryItem]] = {}
-        self._sort_mode = SortMode.NAME_ASC
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(6)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(4, 4, 4, 4)
+        main_layout.setSpacing(6)
 
+        # Sort selector
+        main_layout.addWidget(QLabel("Sort by:"))
         self.sort_dropdown = QComboBox()
         self.sort_dropdown.addItems([
             "Name (A → Z)",
             "Name (Z → A)",
             "Quantity (Low → High)",
-            "Quantity (High → Low)"
+            "Quantity (High → Low)",
         ])
         self.sort_dropdown.currentIndexChanged.connect(self._on_sort_changed)
-        layout.addWidget(QLabel("Sort by:"))
-        layout.addWidget(self.sort_dropdown)
+        main_layout.addWidget(self.sort_dropdown)
 
+        # Tabs
         self.tabs = QTabWidget()
-        layout.addWidget(self.tabs)
-
-        for title in ("Carried", "Equipped"):
-            self._add_tab(title)
+        main_layout.addWidget(self.tabs)
 
         signals.inventory_updated.connect(self._on_inventory_updated)
         self._on_inventory_updated(self.inventory_manager.get_inventory())
+
+    def _on_sort_changed(self, idx: int):
+        self._sort_mode = list(SortMode)[idx]
+        self._refresh_all_tabs()
+
+    def _on_inventory_updated(self, inventory: Inventory):
+        # rebuild item lists per tab
+        self._items_by_tab.clear()
+        for itm in inventory.items:
+            tab = self._get_tab_for_item(itm)
+            self._items_by_tab.setdefault(tab, []).append(itm)
+
+        # ensure tabs exist
+        for tab in self._items_by_tab:
+            if tab not in self._text_widgets:
+                self._add_tab(tab)
+
+        self._refresh_all_tabs()
+
+    def _get_tab_for_item(self, item: InventoryItem) -> str:
+        if item.location in ("wielded", "worn"):
+            return "Equipped"
+        if item.location == "carried":
+            return "Carried"
+        # any other container
+        return item.location.title()
 
     def _add_tab(self, title: str):
         browser = QTextBrowser()
@@ -69,172 +88,96 @@ class InventoryWidget(QWidget):
         browser.setTextInteractionFlags(Qt.TextSelectableByMouse)
         browser.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QScrollArea.NoFrame)
-        scroll_area.setWidget(browser)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+        scroll.setWidget(browser)
 
         container = QWidget()
-        container_layout = QVBoxLayout(container)
-        container_layout.setContentsMargins(0, 0, 0, 0)
-        container_layout.addWidget(scroll_area)
+        lay = QVBoxLayout(container)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(scroll)
 
         self.tabs.addTab(container, title)
         self._text_widgets[title] = browser
-        self._items_by_tab[title] = []
-
-    def _on_inventory_updated(self, inventory: Inventory):
-        for title in self._items_by_tab:
-            self._items_by_tab[title] = []
-
-        for item in inventory.items:
-            tab_title = self._location_map.get(item.category, "Other")
-            if tab_title not in self._text_widgets:
-                self._add_tab(tab_title)
-            self._items_by_tab[tab_title].append(item)
-
-        self._refresh_all_tabs()
-
-    def _on_sort_changed(self, index: int):
-        self._sort_mode = [
-            SortMode.NAME_ASC,
-            SortMode.NAME_DESC,
-            SortMode.QUANTITY_ASC,
-            SortMode.QUANTITY_DESC
-        ][index]
-        self._refresh_all_tabs()
 
     def _refresh_all_tabs(self):
-        coin_types  = ["gold", "silver", "bronze", "copper"]
-        coin_values = {
-            "gold":   16**3,
-            "silver": 16**2,
-            "bronze": 16,
-            "copper": 1
-        }
-
-        for title, browser in self._text_widgets.items():
-            items        = self._items_by_tab.get(title, [])
-            coins, others = [], []
-
-            for item in items:
-                if self._is_coin(item, coin_types):
-                    coins.append(item)
-                else:
-                    others.append(item)
-
-            coins_sorted  = sorted(
-                coins,
-                key=lambda i: -self._coin_value(i, coin_types, coin_values)
-            )
-            others_sorted = self._sort_items(others, self._sort_mode)
-
-            coin_lines   = [
-                self._format_quantity(item.quantity, item.name)
-                for item in coins_sorted
-            ]
-
-            # FIXED: use plural-aware _coin_value() here
-            total_copper = sum(
-                self._get_numeric_quantity(item)
-                * self._coin_value(item, coin_types, coin_values)
-                for item in coins
-            )
-
-            remaining = total_copper
-            gold      = remaining // coin_values["gold"]
-            remaining %= coin_values["gold"]
-            silver    = remaining // coin_values["silver"]
-            remaining %= coin_values["silver"]
-            bronze    = remaining // coin_values["bronze"]
-            copper    = remaining % coin_values["bronze"]
-
-            summary = (
-                f"<span style='color: gray;' title='1g = 16s = 256b = 4096c'>"
-                f"Total: {gold}g {silver}s {bronze}b {copper}c = {total_copper}c"
-                f"</span>"
-            )
-
-            other_lines = [
-                self._format_quantity(item.quantity, item.name)
-                for item in others_sorted
-            ]
-
-            if coin_lines:
-                all_lines = coin_lines + [summary] + other_lines
+        for tab, widget in self._text_widgets.items():
+            items = self._items_by_tab.get(tab, [])
+            if tab == "Equipped":
+                widget.setHtml(self._render_equipped_tab(items))
             else:
-                all_lines = other_lines
+                widget.setHtml(self._render_standard_tab(items))
 
-            browser.setHtml(
-                "<br>".join(all_lines)
-                if all_lines
-                else '<span style="color: gray;">No items</span>'
-            )
+    def _render_equipped_tab(self, items: list[InventoryItem]) -> str:
+        # split wielded vs worn
+        wielded = [i for i in items if i.location == "wielded"]
+        worn    = [i for i in items if i.location == "worn"]
 
-    def _sort_items(self, items: list[InventoryItem], mode: SortMode):
-        def quantity_key(item):
-            q = item.quantity.lower()
-            if q.isdigit():
-                return int(q)
-            elif q == "some":
-                return 1000
-            elif q == "many":
-                return 1001
-            return -1
+        lines: list[str] = []
 
-        def name_key(item):
-            name = item.name.lower()
-            if name.startswith("a "):
-                name = name[2:]
-            elif name.startswith("an "):
-                name = name[3:]
-            return name
+        # 1) Wielded groups
+        from collections import defaultdict
+        wg = defaultdict(list)
+        for it in wielded:
+            slot = it.slot or "Right Hand"
+            wg[slot].append(it)
 
-        if mode == SortMode.NAME_ASC:
+        for slot in sorted(wg.keys()):
+            header = f"Wielded: {slot}"
+            lines.append(f"<b>{header}</b>")
+            for it in wg[slot]:
+                lines.append(it.name)
+
+        # 2) Worn groups by slot
+        wg2 = defaultdict(list)
+        for it in worn:
+            key = it.slot or "Worn"
+            wg2[key].append(it)
+
+        for slot in sorted(wg2.keys()):
+            # ring slot shows “Left Finger” without “Worn:” prefix
+            lines.append(f"<b>{slot}</b>")
+            for it in wg2[slot]:
+                lines.append(it.name)
+
+        if not lines:
+            return '<span style="color: gray;">No equipped items</span>'
+
+        return "<br>".join(lines)
+
+    def _render_standard_tab(self, items: list[InventoryItem]) -> str:
+        # sort
+        items = self._sort_items(items)
+        if not items:
+            return '<span style="color: gray;">No items</span>'
+
+        lines: list[str] = []
+        for it in items:
+            if it.quantity > 1:
+                lines.append(f"{it.quantity}&nbsp;&times;&nbsp;{it.name}")
+            else:
+                lines.append(it.name)
+
+        return "<br>".join(lines)
+
+    def _sort_items(self, items: list[InventoryItem]) -> list[InventoryItem]:
+        def name_key(i: InventoryItem):
+            nm = i.name.lower()
+            for prefix in ("a ", "an "):
+                if nm.startswith(prefix):
+                    return nm[len(prefix):]
+            return nm
+
+        def qty_key(i: InventoryItem):
+            return i.quantity
+
+        if self._sort_mode == SortMode.NAME_ASC:
             return sorted(items, key=name_key)
-        if mode == SortMode.NAME_DESC:
+        if self._sort_mode == SortMode.NAME_DESC:
             return sorted(items, key=name_key, reverse=True)
-        if mode == SortMode.QUANTITY_ASC:
-            return sorted(items, key=quantity_key)
-        if mode == SortMode.QUANTITY_DESC:
-            return sorted(items, key=quantity_key, reverse=True)
+        if self._sort_mode == SortMode.QUANTITY_ASC:
+            return sorted(items, key=qty_key)
+        if self._sort_mode == SortMode.QUANTITY_DESC:
+            return sorted(items, key=qty_key, reverse=True)
         return items
-
-    def _format_quantity(self, quantity: str, name: str) -> str:
-        if quantity == "1":
-            lowered = name.lower()
-            if lowered.startswith("a "):
-                name = name[2:]
-            elif lowered.startswith("an "):
-                name = name[3:]
-            padded = quantity.rjust(2).replace(" ", "\u00A0")
-            return f"<span>{padded}× {name}</span>"
-
-        if quantity.isdigit():
-            padded = quantity.rjust(2).replace(" ", "\u00A0")
-            return f"<span>{padded}× {name}</span>"
-
-        return f"<span>{quantity.capitalize()} {name}</span>"
-
-    def _is_coin(self, item: InventoryItem, coin_types: list[str]) -> bool:
-        name = item.name.lower().strip()
-        return any(
-            name == f"{t} coin" or name.endswith(f"{t} coins")
-            for t in coin_types
-        )
-
-    def _coin_value(
-        self,
-        item: InventoryItem,
-        coin_types: list[str],
-        coin_values: dict[str, int]
-    ) -> int:
-        name = item.name.lower().strip()
-        for t in coin_types:
-            if name.endswith(f"{t} coin") or name.endswith(f"{t} coins"):
-                return coin_values[t]
-        return 0
-
-    def _get_numeric_quantity(self, item: InventoryItem) -> int:
-        q = item.quantity.lower()
-        return int(q) if q.isdigit() else 0
