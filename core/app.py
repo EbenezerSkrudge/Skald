@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QApplication
 from core.managers.alias_manager import AliasManager
 from core.config import HOST, PORT
 from core.connection.connection import MudConnection
-from core.managers.inventory import InventoryManager
+from core.managers.inventory_manager import InventoryManager
 from core.managers.keymap_manager import KeymapManager
 from data.db import init_db
 from core.managers.script_manager import ScriptManager
@@ -88,8 +88,7 @@ class App:
         self.timer_manager = TimerManager(self)
         self.trigger_manager = TriggerManager(self)
         self.script_manager = ScriptManager(self, self.trigger_manager)
-        self.inventory_manager = InventoryManager(debug=True)
-        self.keymap_manager = KeymapManager(self)
+        self.inventory_manager = InventoryManager()
 
         register_system_triggers(self.trigger_manager)
 
@@ -98,6 +97,8 @@ class App:
             self.main_window = MainWindow(self)
         self.main_window.showMaximized()
         self.main_window.console.input.setFocus()
+
+        self.keymap_manager = KeymapManager(self)
 
     def _init_connection_events(self):
         self.connection.dataReceived.connect(self._on_data)

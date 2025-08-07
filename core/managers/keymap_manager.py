@@ -1,128 +1,202 @@
 # core/managers/keymap_manager.py
 
-from typing import Dict, List, Any
-from PySide6.QtCore import QObject, QEvent
-from PySide6.QtGui import QKeySequence, QKeyEvent
+import re
+from typing            import Any, Dict, List, Optional
+from PySide6.QtCore    import QObject, QEvent, Qt
+from PySide6.QtGui     import QKeySequence, QKeyEvent
 from PySide6.QtWidgets import QApplication
-from pony.orm import db_session, select
+from pony.orm          import db_session, select
 
-from data.models import KeyBinding
+from data.models       import KeyBinding
 
 
 def normalize_key(event: QKeyEvent) -> str:
     """
-    Turn a QKeyEvent into the same “NativeText” string
-    the settings UI uses (e.g. "Ctrl+Shift+S").
+    Normalize a QKeyEvent to NativeText string.
+    Preserves distinction between top-row and keypad digits.
+    Encodes keypad digits as "Num+..." to match user bindings.
     """
+    k = event.key()
     mods = event.modifiers().value
-    code = mods | event.key()
-    return QKeySequence(code).toString(QKeySequence.NativeText)
+    code = mods | k
+
+    # Generate base sequence
+    seq = QKeySequence(code).toString(QKeySequence.NativeText)
+
+    # If keypad modifier is active and key is 0–9, prefix with "Num+"
+    if Qt.Key_0 <= k <= Qt.Key_9 and (event.modifiers() & Qt.KeypadModifier):
+        parts = seq.split("+")
+        if "Num" not in parts:
+            parts.insert(0, "Num")
+        seq = "+".join(parts)
+
+    return seq
 
 
 class KeymapManager(QObject):
     """
-    Listens for key presses, looks up user bindings
-    (including dynamic directions/abbreviations),
-    and dispatches the mapped command to the MUD.
+    Watches for key presses, looks up user bindings (static and dynamic),
+    and dispatches the mapped command to the MUD. Supports:
+      - wildcard directions like "north*" → matches north, northup, northdown
+      - cardinal/diagonal abbreviations
+      - disambiguation menus on multiple exits
     """
     def __init__(self, app):
         super().__init__()
         self.app = app
         self.enabled = True
-        self._keymap: Dict[str, str] = {}
+
+        self._keymap: Dict[str,str] = {}
+
+        self._pending_choices: Optional[List[str]]    = None
+        self._pending_template: Optional[str]         = None
+        self._pending_base: Optional[str]             = None
 
         self.reload()
         QApplication.instance().installEventFilter(self)
 
     @db_session
-    def _load_db_bindings(self) -> Dict[str, str]:
-        """
-        Pull KeyBinding rows into a dict:
-          { NativeText shortcut: command string }
-        """
+    def _load_db_bindings(self) -> Dict[str,str]:
         return {
             QKeySequence(kb.key)
-                .toString(QKeySequence.NativeText): kb.command
+              .toString(QKeySequence.NativeText): kb.command
             for kb in select(k for k in KeyBinding)
         }
 
     def reload(self):
-        """
-        Refresh the in-memory keymap from the database.
-        Call this after the user saves new bindings.
-        """
         self._keymap = self._load_db_bindings()
 
     def eventFilter(self, obj: Any, event: QEvent) -> bool:
-        """
-        Intercept KeyPress events when enabled.
-        Normalize, look up in keymap, resolve directions,
-        send to MUD, and consume the event.
-        """
-        if not self.enabled or event.type() != QEvent.KeyPress:
+        if event.type() != QEvent.KeyPress:
             return super().eventFilter(obj, event)
 
-        key_str = normalize_key(event)
-        cmd = self._keymap.get(key_str)
-        if not cmd:
+        ev: QKeyEvent = event
+
+        # ——— 1) Disambiguation mode —————————————————————————————
+        if self._pending_choices is not None:
+            if ev.isAutoRepeat():
+                return True
+
+            key = ev.key()
+            if key == Qt.Key_Escape:
+                self._clear_pending()
+                event.accept()
+                return True
+
+            digit = None
+            if Qt.Key_1 <= key <= Qt.Key_9:
+                digit = key - Qt.Key_0
+            elif Qt.Key_1 <= key <= Qt.Key_9 and (ev.modifiers() & Qt.KeypadModifier):
+                digit = key - Qt.Key_0
+
+            if digit:
+                idx = digit - 1
+                if 0 <= idx < len(self._pending_choices):
+                    choice  = self._pending_choices[idx]
+                    tmpl    = self._pending_template or ""
+                    base    = self._pending_base or ""
+                    # replace "north*" with the chosen exit
+                    cmd     = tmpl.replace(f"{base}*", choice)
+                    self.app.send_to_mud(cmd)
+
+                self._clear_pending()
+                event.accept()
+                return True
+
+            self._clear_pending()
+            event.accept()
+            return True
+
+        # ——— 2) Normal key‐map mode ————————————————————————————
+        if not self.enabled:
             return super().eventFilter(obj, event)
 
-        if cmd.startswith('*'):
-            cmd = self._resolve_direction(cmd[1:])
+        key_str = normalize_key(ev)
+        cmd_raw = self._keymap.get(key_str)
+        if not cmd_raw:
+            return super().eventFilter(obj, event)
 
-        self.app.send_to_mud(cmd)
+        # look for wildcard pattern "north*"
+        m = re.search(r'([A-Za-z]+)\*', cmd_raw)
+        if m:
+            base    = m.group(1)
+            matches = self._get_direction_matches(base)
+
+            if len(matches) == 0:
+                # no GMCP exits, send "north" fallback
+                final_cmd = cmd_raw.replace(f"{base}*", base)
+                self.app.send_to_mud(final_cmd)
+                event.accept()
+                return True
+
+            if len(matches) == 1:
+                # only one match, auto‐send
+                final_cmd = cmd_raw.replace(f"{base}*", matches[0])
+                self.app.send_to_mud(final_cmd)
+                event.accept()
+                return True
+
+            # multiple matches, prompt user
+            self._pending_choices  = matches
+            self._pending_template = cmd_raw
+            self._pending_base     = base
+            self._show_disambiguation(matches)
+            event.accept()
+            return True
+
+        # no wildcard, send as‐is
+        self.app.send_to_mud(cmd_raw)
+        event.accept()
         return True
 
-    def _resolve_direction(self, base: str) -> str:
+    def _get_direction_matches(self, base: str) -> List[str]:
         """
-        Resolve a base token or abbreviation against the
-        current GMCP exit list in app.gmcp_data.
-        Priority:
-          1. Exact match
-          2. Common cardinal/diagonal abbreviations
-          3. Shortest prefix match
-          4. Fallback to base
+        Return only those GMCP exits that start with `base` and
+        have an empty, 'up', or 'down' suffix. Excludes diagonals.
         """
-        raw_exits: List[str] = []
-
-        # Try Room.Info.exits (if provided)
-        room = self.app.gmcp_data.get("Room.Info")
-        if isinstance(room, dict):
-            raw_exits = room.get("exits", [])
-
-        # Fallback on LID.exits
-        if not raw_exits:
-            lid = self.app.gmcp_data.get("LID", {})
-            if isinstance(lid, dict):
-                raw_exits = lid.get("exits", [])
-
-        # Build case‐insensitive lookup
-        exit_map = {e.lower(): e for e in raw_exits}
+        raw_exits = self._fetch_raw_exits()
+        exit_map  = {e.lower(): e for e in raw_exits}
         lower_exits = set(exit_map.keys())
         b = base.lower()
 
-        # 1) Exact match
-        if b in lower_exits:
-            return exit_map[b]
+        matches: List[str] = []
+        for le in lower_exits:
+            if le.startswith(b):
+                suffix = le[len(b):]
+                if suffix in ('', 'up', 'down'):
+                    matches.append(exit_map[le])
+        return matches
 
-        # 2) Standard abbreviations
-        abbr_map = {
-            'n':  'north',     's':  'south',
-            'e':  'east',      'w':  'west',
-            'ne': 'northeast', 'nw': 'northwest',
-            'se': 'southeast', 'sw': 'southwest',
-            'u':  'up',        'd':  'down',
-        }
-        if b in abbr_map:
-            full = abbr_map[b].lower()
-            if full in lower_exits:
-                return exit_map[full]
+    def _fetch_raw_exits(self) -> List[str]:
+        gmcp = self.app.gmcp_data
 
-        # 3) Shortest prefix match
-        matches = [le for le in lower_exits if le.startswith(b)]
-        if matches:
-            best = min(matches, key=len)
-            return exit_map[best]
+        # Room.Info.exits may still be a list
+        info = gmcp.get("Room.Info")
+        if isinstance(info, dict):
+            ex = info.get("exits")
+            if isinstance(ex, dict):
+                return list(ex.keys())
+            if isinstance(ex, list):
+                return ex
 
-        # 4) Give up — return the raw base
-        return base
+        # LID.exits is now a dict of {direction: terrain, ...}
+        lid = gmcp.get("LID")
+        if isinstance(lid, dict):
+            ex = lid.get("exits")
+            if isinstance(ex, dict):
+                return list(ex.keys())
+            if isinstance(ex, list):
+                return ex
+
+        return []
+
+    def _show_disambiguation(self, choices: List[str]):
+        cons = self.app.main_window.console
+        cons.echo("There are multiple exits in that direction:")
+        for i, c in enumerate(choices, start=1):
+            cons.echo(f"{i}: {c}")
+
+    def _clear_pending(self):
+        self._pending_choices  = None
+        self._pending_template = None
+        self._pending_base     = None

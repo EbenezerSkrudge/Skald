@@ -14,6 +14,14 @@ class InventoryItem:
     raw_text: str
     quantity: int = 1  # Default to 1
 
+    @property
+    def display_name(self) -> str:
+        if self.quantity.isdigit():
+            padded = self.quantity.rjust(2).replace(" ", "\u00A0")  # preserve leading space
+            return f"{padded}× {self.name}"
+        else:
+            return f"{self.quantity.capitalize()} {self.name}"
+
 
 @dataclass
 class Inventory:
@@ -39,24 +47,24 @@ class InventoryManager:
         if self.debug:
             print("📦 Parsed Inventory:")
             for item in inventory.items:
-                print(f"  [{item.category}] {item.name}")
+                print(f"  [{item.category}] {item.quantity}× {item.name}")
 
         self._current_inventory = inventory
         signals.inventory_updated.emit(inventory)
 
     def get_inventory(self) -> Inventory:
         return self._current_inventory
-    
+
     @staticmethod
     def _normalize_text(text: str) -> str:
         return ' '.join(text.strip().split())
-    
+
     @staticmethod
     def _extract_category_items(text: str) -> dict:
         category_patterns = {
             "wielded": r"You are wielding (.+?)\.",
-            "worn": r"You are wearing (.+?)\.",
-            "carried": r"You are carrying (.+?)\.",
+            "worn":     r"You are wearing (.+?)\.",
+            "carried":  r"You are carrying (.+?)\.",
         }
         items_by_category = {}
         for category, pattern in category_patterns.items():
@@ -65,19 +73,45 @@ class InventoryManager:
                 combined = ', '.join(matches)
                 items_by_category[category] = combined
         return items_by_category
-    
+
     @staticmethod
-    def _extract_quantity(item_text: str) -> tuple[int, str]:
+    def _extract_quantity(item_text: str) -> tuple[str, str]:
         """
-        Extracts quantity from item text if present.
-        Returns (quantity, cleaned_name)
+        Extracts quantity from item text.
+        Returns (quantity_str, cleaned_name), where quantity_str may be a number or a word like 'many'.
         """
-        match = re.match(r"(\d+)\s+(.*)", item_text)
-        if match:
-            qty = int(match.group(1))
-            name = match.group(2).strip()
+        word_to_number = {
+            "one": "1", "two": "2", "three": "3", "four": "4", "five": "5",
+            "six": "6", "seven": "7", "eight": "8", "nine": "9", "ten": "10",
+            "eleven": "11", "twelve": "12", "thirteen": "13", "fourteen": "14",
+            "fifteen": "15", "sixteen": "16", "seventeen": "17", "eighteen": "18",
+            "nineteen": "19", "twenty": "20"
+        }
+
+        descriptive_words = {"some", "many"}
+
+        item_text = item_text.strip()
+
+        # Match digit-based quantity
+        match_digit = re.match(r"(\d+)\s+(.*)", item_text)
+        if match_digit:
+            qty = match_digit.group(1)
+            name = match_digit.group(2).strip()
             return qty, name
-        return 1, item_text.strip()
+
+        # Match word-based quantity
+        match_word = re.match(r"([a-zA-Z\-]+)\s+(.*)", item_text)
+        if match_word:
+            word = match_word.group(1).lower()
+            name = match_word.group(2).strip()
+
+            if word in word_to_number:
+                return word_to_number[word], name
+            elif word in descriptive_words:
+                return word, name
+
+        # Default fallback
+        return "1", item_text
 
     @staticmethod
     def _split_items(raw: str) -> List[str]:
@@ -88,7 +122,7 @@ class InventoryManager:
         normalized = self._normalize_text(text)
         category_blocks = self._extract_category_items(normalized)
 
-        items = []
+        items: List[InventoryItem] = []
         for category, raw_items in category_blocks.items():
             for item_text in self._split_items(raw_items):
                 quantity, name = self._extract_quantity(item_text)
@@ -98,5 +132,5 @@ class InventoryManager:
                     raw_text=item_text,
                     quantity=quantity
                 ))
-        print(items)
+
         return Inventory(items)

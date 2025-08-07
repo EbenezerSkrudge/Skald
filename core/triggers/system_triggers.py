@@ -1,4 +1,4 @@
-# core/system_triggers.py
+# core/triggers/system_triggers.py
 
 from core.signals import signals
 from core.managers.trigger_manager import TriggerManager
@@ -22,7 +22,9 @@ def register_system_triggers(manager: TriggerManager):
 
     manager.add_trigger(
         name="inventory_block",
-        regex=r"(?s)^You (?:are wielding|are wearing|are carrying|do not carry anything).*",
+        regex=(
+            r"(?s)^.*?\bYou (?:are wielding|are wearing|are carrying|do not carry anything)\b.*"
+        ),
         action=_on_inventory_block,
         enabled=True,
         priority=0

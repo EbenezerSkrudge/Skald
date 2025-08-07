@@ -15,10 +15,11 @@ from PySide6.QtWidgets import (
     QSplitter,
     QStatusBar,
     QVBoxLayout,
-    QWidget,
+    QWidget, QSizePolicy,
 )
 
 from ui.widgets.console.console import Console
+from ui.widgets.inventory.inventory_widget import InventoryWidget
 from ui.widgets.mapper.mapper_widget import MapperWidget
 from ui.widgets.vitals.vitals_widget import VitalsWidget
 
@@ -68,7 +69,15 @@ class MainWindow(QMainWindow):
         left_layout.setSpacing(6)
 
         self.vitals = VitalsWidget(self.app)
-        left_layout.addWidget(self.vitals)
+        self.vitals.setSizePolicy(
+            QSizePolicy.Preferred,
+            QSizePolicy.Fixed
+        )
+        self.vitals.setMaximumHeight(self.vitals.sizeHint().height())
+        left_layout.addWidget(self.vitals, 0)
+
+        self.inventory_widget = InventoryWidget(self.app.inventory_manager)
+        left_layout.addWidget(self.inventory_widget, 1)
 
         # Center panel with Console
         self.center_panel = QFrame()
