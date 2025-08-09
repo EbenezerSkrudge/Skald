@@ -88,7 +88,7 @@ class App:
         self.timer_manager = TimerManager(self)
         self.trigger_manager = TriggerManager(self)
         self.script_manager = ScriptManager(self, self.trigger_manager)
-        self.inventory_manager = InventoryManager()
+        self.inventory_manager = InventoryManager(self)
 
         register_system_triggers(self.trigger_manager)
 
