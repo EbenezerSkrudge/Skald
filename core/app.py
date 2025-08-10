@@ -2,9 +2,11 @@
 
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Optional
 
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
 from core.managers.alias_manager import AliasManager
@@ -32,6 +34,7 @@ log = logging.getLogger(__name__)
 
 class App:
     _instance = None
+    _mute_patterns = {}
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
@@ -110,12 +113,36 @@ class App:
     def _check_connection(self) -> bool:
         return self.connection.socket and self.connection.socket.isOpen()
 
-    def send_to_mud(self, text: str):
+    def send_to_mud(self, text: str, mute_pattern: Optional[str] = None, timeout: int = 5000):
+        if mute_pattern:
+            try:
+                re.compile(mute_pattern)  # Validate regex
+            except re.error as e:
+                log.error(f"Invalid mute pattern: {mute_pattern}. Error: {e}")
+                return
+
+            # Add the pattern and associate it with a QTimer
+            self._mute_patterns[mute_pattern] = QTimer(self.qt_app)
+            self._mute_patterns[mute_pattern].setSingleShot(True)
+            self._mute_patterns[mute_pattern].timeout.connect(lambda: self._remove_mute_pattern(mute_pattern))
+            self._mute_patterns[mute_pattern].start(timeout)
+
         if self._check_connection():
             if not self.alias_manager.process(text):
                 self.connection.send(text)
+                if not mute_pattern:
+                    self.main_window.console.echo(text)  # Echo only if no mute pattern is set
         else:
             self._echo_warning("NO CONNECTION")
+
+    def _remove_mute_pattern(self, pattern: str):
+        """
+        Remove a mute tracking pattern and stop its associated QTimer if it exists.
+        """
+        timer = self._mute_patterns.pop(pattern, None)
+        if timer:
+            timer.stop()
+            timer.deleteLater()
 
     def send_gmcp(self, package: str, payload: Optional[str] = None):
         if self._check_connection():
@@ -144,8 +171,24 @@ class App:
     # ─── Incoming Data Handlers ─────────────────────
 
     def _on_data(self, text: str):
-        self.trigger_manager.check_triggers(text)
-        self.main_window.console.echo(text)
+        """
+           Process incoming data from the MUD, optionally suppressing output for tracked mute patterns.
+           """
+        muted_patterns = []
+        for pattern in self._mute_patterns.keys():
+            if re.search(pattern, text):
+                self.trigger_manager.check_triggers(text)
+                muted_patterns.append(pattern)  # Collect matched patterns
+                break  # Suppress echoing for this match
+
+        # Clean up matched patterns
+        for pattern in muted_patterns:
+            self._remove_mute_pattern(pattern)
+
+        # Default behavior for non-matching responses:
+        if not muted_patterns:
+            self.trigger_manager.check_triggers(text)
+            self.main_window.console.echo(text)
 
     def _on_gmcp(self, pkg: str, payload):
         log.info(f"[>GMCP] {pkg} = {payload}")

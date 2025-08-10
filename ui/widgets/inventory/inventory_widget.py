@@ -65,6 +65,9 @@ class InventoryWidget(QWidget):
         # Connect inventory updates
         signals.inventory_updated.connect(self._on_inventory_updated)
 
+        # Connect tab change to refresh inventory
+        self.tabs.currentChanged.connect(self._on_tab_changed)
+
         # Seed initial view
         self._on_inventory_updated(self.inventory_manager.get_inventory())
 
@@ -92,6 +95,13 @@ class InventoryWidget(QWidget):
         # Update encumbrance
         self.volume_label.setText(f"Vol: {inventory.volume}%")
         self.weight_label.setText(f"Wt: {inventory.weight}%")
+
+    def _on_tab_changed(self, index: int) -> None:
+        """
+        Refresh the inventory when a tab is selected.
+        """
+        if index >= 0:  # Ensure there is a valid tab
+            self.inventory_manager.refresh_inventory()
 
     # ---------------- Tab & rendering ---------------- #
 

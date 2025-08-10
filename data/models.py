@@ -19,13 +19,14 @@ class Script(db.Entity):
     """
     Represents user‐defined scripts.
     """
-    name = Required(str, unique=True)
-    category = Required(str)
-    pattern = Optional(str)
-    interval = Optional(int)
-    code = Required(str)
-    enabled = Required(bool, default=True)
-    priority = Required(int, default=0)
+    name        = Required(str, unique=True)
+    category    = Required(str)
+    pattern     = Optional(str)
+    interval    = Optional(int)
+    code        = Required(str)
+    enabled     = Required(bool, default=True)
+    priority    = Required(int, default=0)
+    gag         = Required(bool, default=False)
 
     # Pony will now register this index on the same `db`
     composite_index(category, priority)

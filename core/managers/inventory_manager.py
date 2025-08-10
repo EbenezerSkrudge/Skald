@@ -30,6 +30,8 @@ class InventoryManager:
         "carried": r"You are carrying\s+(.+?)\.",
     }
 
+    _MUTE_PATTERN = r"You are (?:wielding|wearing|carrying)"
+
     _WORD_NUMBERS = {
         "a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4,
         "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10
@@ -50,6 +52,17 @@ class InventoryManager:
         self._inventory.volume = self.app.gmcp_data["CVD"]["volume"]
         self._inventory.weight = self.app.gmcp_data["CVD"]["weight"]
         signals.inventory_updated.emit(self._inventory)
+
+    def refresh_inventory(self, timeout: int = 5000):
+        """
+        Send a muted command to the MUD to refresh and retrieve inventory data.
+        The output will be suppressed in the console.
+        """
+        self.app.send_to_mud(
+            text="inventory",  # MUD command to retrieve inventory data
+            mute_pattern=self._MUTE_PATTERN,  # Pattern to suppress console echo
+            timeout=timeout  # Timeout for muting the response
+        )
 
     def _parse_inventory_block(self, block: str) -> List[InventoryItem]:
         block = re.sub(r"\s+", " ", block.strip())  # normalize whitespace

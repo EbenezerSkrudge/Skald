@@ -3,6 +3,7 @@
 import re
 from typing import List, Optional
 from pony.orm import db_session
+
 from core.context import Context
 from core.triggers.trigger import Trigger as TriggerData
 from data.models import Script
@@ -35,49 +36,77 @@ class TriggerManager:
     @db_session
     def _load_all_from_db(self) -> None:
         for rec in Script.select(lambda s: s.category == "trigger" and s.enabled):
-            self._compile_and_register(rec)
+            self.compile_and_register(rec)
 
-    def _compile_and_register(self, rec: Script) -> None:
-        """Compile Script code and add to memory."""
+    def compile_and_register(self, rec: Script) -> None:
         code_obj = compile(rec.code or "", f"<trigger:{rec.name}>", "exec")
 
         def action_fn(match, ctx=self._ctx):
             ctx.exec_script(code_obj, match=match)
 
+        # Pass rec.gag into add_trigger
         self.add_trigger(
-            name=rec.name,
-            regex=rec.pattern or "",
-            action=action_fn,
-            enabled=rec.enabled,
-            priority=rec.priority
+            name     = rec.name,
+            regex    = rec.pattern or "",
+            action   = action_fn,
+            enabled  = rec.enabled,
+            priority = rec.priority,
+            gag      = rec.gag,              # ← wire it through
         )
+
 
     # ─── In-Memory Matching ────────────────────────────────────
 
-    def add_trigger(self, name: str, regex: str, action, enabled=True, priority=0) -> None:
-        """Compile & register a trigger in memory."""
+    def add_trigger(
+        self,
+        name: str,
+        regex: str,
+        action,
+        enabled: bool = True,
+        priority: int = 0,
+        gag: bool = False,
+    ) -> None:
+        compiled = re.compile(regex)
         trig = TriggerData(
             priority=priority,
             name=name,
             regex=regex,
-            pattern=re.compile(regex),
+            pattern=compiled,
             action=action,
             enabled=enabled,
+            gag=gag,                         # ← store it
         )
-        self.remove_trigger(name)
-        self._triggers.append(trig)
+
+        # replace old and re-sort
+        self._triggers = [t for t in self._triggers if t.name != name] + [trig]
         self._triggers.sort()
+
 
     def remove_trigger(self, name: str) -> None:
         """Unregister a trigger in memory."""
         self._triggers = [t for t in self._triggers if t.name != name]
 
-    def check_triggers(self, text: str) -> None:
-        """Fire the first matching enabled trigger for the given text."""
+    def check_triggers(self, text: str) -> bool:
+        """
+        Return True if the first matching enabled trigger has gag=True.
+        Side-effects (action) still fire.
+        """
         for trig in self._triggers:
-            if trig.enabled and (m := trig.pattern.search(text)):
-                trig.action(m, self._ctx)
-                break
+            if not trig.enabled:
+                continue
+
+            m = trig.pattern.search(text)
+            if not m:
+                continue
+
+            # fire the trigger action
+            trig.action(m, self._ctx)
+
+            # suppress echo if requested
+            return trig.gag
+
+        return False
+
 
     # ─── Persistence & CRUD ────────────────────────────────────
 
@@ -95,7 +124,7 @@ class TriggerManager:
         rec = Script(name=name, category="trigger", pattern=regex,
                      code=code, enabled=enabled, priority=priority)
         rec.flush()
-        self._compile_and_register(rec)
+        self.compile_and_register(rec)
         return rec
 
     @db_session
@@ -105,7 +134,7 @@ class TriggerManager:
         rec.set(name=name, pattern=regex, code=code, priority=priority, enabled=enabled)
         rec.flush()
         self.remove_trigger(old_name)
-        self._compile_and_register(rec)
+        self.compile_and_register(rec)
         return rec
 
     @db_session
@@ -121,7 +150,7 @@ class TriggerManager:
         rec.enabled = not rec.enabled
         rec.flush()
         if rec.enabled:
-            self._compile_and_register(rec)
+            self.compile_and_register(rec)
         else:
             self.remove_trigger(name)
         return rec.enabled

@@ -1,11 +1,12 @@
 # core/trigger.py
 
 import re
+from dataclasses import dataclass
 from typing import Callable, Pattern
 
 from core.context import Context
 
-
+@dataclass
 class Trigger:
     """
     In‐memory trigger descriptor.
@@ -20,6 +21,7 @@ class Trigger:
             pattern: Pattern[str],
             action: Callable[[re.Match[str], Context], None],
             enabled: bool,
+            gag: bool
     ):
         self.priority = priority
         self.name = name
@@ -28,6 +30,7 @@ class Trigger:
         # Now properly typed to accept (match, ctx)
         self.action: Callable[[re.Match[str], Context], None] = action
         self.enabled = enabled
+        self.gag = gag
 
     def __lt__(self, other: "Trigger") -> bool:
         return self.priority < other.priority
